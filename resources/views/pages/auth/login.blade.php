@@ -1,59 +1,49 @@
-<x-layouts::auth :title="__('Log in')">
-    <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Log in to your account')" :description="__('Enter your email and password below to log in')" />
+@extends('layouts.masuk', ['judul' => 'Masuk'])
 
-        <!-- Session Status -->
-        <x-auth-session-status class="text-center" :status="session('status')" />
+@section('isi')
+    <div class="flex h-full flex-col justify-center">
+        <h2 class="text-lg font-semibold sm:text-xl">Masuk</h2>
+        <p class="mt-1 text-sm text-zinc-500">
+            Gunakan email dan kata sandi yang diberikan admin aplikasi.
+        </p>
 
-        <x-passkey-verify />
+        <x-pm.status :status="session('status')" />
 
-        <form method="POST" action="{{ route('login.store') }}" class="flex flex-col gap-6">
+        <form method="POST" action="{{ route('login.store') }}" class="mt-6 flex flex-col gap-4">
             @csrf
 
-            <!-- Email Address -->
-            <flux:input
-                name="email"
-                :label="__('Email address')"
-                :value="old('email')"
-                type="email"
-                required
-                autofocus
-                autocomplete="email"
-                placeholder="email@example.com"
-            />
+            <x-pm.input label="Email" name="email" type="email"
+                        placeholder="nama@instansi.go.id"
+                        required autofocus autocomplete="email" inputmode="email" />
 
-            <!-- Password -->
-            <div class="relative">
-                <flux:input
-                    name="password"
-                    :label="__('Password')"
-                    type="password"
-                    required
-                    autocomplete="current-password"
-                    :placeholder="__('Password')"
-                    viewable
-                />
-
+            <x-pm.sandi label="Kata sandi" name="password"
+                        placeholder="Kata sandi" required autocomplete="current-password">
                 @if (Route::has('password.request'))
-                    <flux:link class="absolute top-0 text-sm end-0" :href="route('password.request')" wire:navigate>
-                        {{ __('Forgot your password?') }}
-                    </flux:link>
+                    <x-slot:aksi>
+                        <a href="{{ route('password.request') }}" class="text-xs font-medium text-zinc-600 underline underline-offset-2 hover:text-zinc-900">
+                            Lupa kata sandi?
+                        </a>
+                    </x-slot:aksi>
                 @endif
-            </div>
+            </x-pm.sandi>
 
-            <!-- Remember Me -->
-            <flux:checkbox name="remember" :label="__('Remember me')" :checked="old('remember')" />
+            <label class="flex items-center gap-2 text-sm text-zinc-700">
+                <input type="checkbox"
+                       name="remember"
+                       value="1"
+                       @checked(old('remember'))
+                       class="size-4 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500">
+                Ingat saya di perangkat ini
+            </label>
 
-            <div class="flex items-center justify-end">
-                <flux:button variant="primary" type="submit" class="w-full" data-test="login-button">
-                    {{ __('Log in') }}
-                </flux:button>
-            </div>
+            <x-pm.tombol-utama class="mt-1" data-test="login-button">Masuk</x-pm.tombol-utama>
         </form>
 
+        <x-pm.passkey />
+
         {{-- Registrasi mandiri ditutup: akun dibuat admin lewat menu Pengguna. --}}
-        <div class="text-sm text-center text-zinc-600 dark:text-zinc-400">
-            {{ __('Belum punya akun? Hubungi admin aplikasi.') }}
-        </div>
+        <p class="mt-6 border-t border-zinc-100 pt-4 text-center text-xs text-zinc-500">
+            Belum punya akun? Hubungi admin aplikasi.
+        </p>
     </div>
-</x-layouts::auth>
+@endsection

@@ -8,7 +8,13 @@ use App\Http\Controllers\KendalaController;
 use App\Http\Controllers\PenggunaController;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('home');
+// Aplikasi ini tidak punya halaman publik: pintu masuknya langsung form login.
+// Nama route 'home' dipertahankan karena dipakai sebagai tujuan redirect logout.
+Route::get('/', function () {
+    return auth()->check()
+        ? redirect()->route('dashboard')
+        : redirect()->route('login');
+})->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
