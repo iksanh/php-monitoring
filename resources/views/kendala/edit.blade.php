@@ -15,6 +15,11 @@
         @method('PUT')
 
         <div class="sm:col-span-2">
+            <x-pm.select label="Kategori kendala" name="kategori" :value="$kendala->kategori->value"
+                         :pilihan="\App\Enums\KategoriKendala::pilihan()" wajib />
+        </div>
+
+        <div class="sm:col-span-2">
             <x-pm.textarea label="Uraian kendala" name="uraian" :value="$kendala->uraian" wajib />
         </div>
 

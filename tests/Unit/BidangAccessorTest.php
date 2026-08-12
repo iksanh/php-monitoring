@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Enums\StatusTahap;
+use App\Enums\StatusBidang;
 use App\Models\Bidang;
-use App\Support\Tahap;
+use App\Models\Kendala;
 use App\Support\Tahapan;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Collection;
 use Tests\TestCase;
 
 /**
@@ -32,118 +33,61 @@ class BidangAccessorTest extends TestCase
         $this->assertCount(Tahapan::jumlah(), $bidang->tahapBerlaku());
     }
 
-    public function test_tahap_kondisional_tidak_berlaku_dikeluarkan_dari_perhitungan(): void
+    public function test_persen_progres_memakai_seluruh_tahap_sebagai_penyebut(): void
     {
-        $kondisional = $this->tahapKondisional();
-        $kolomStatus = $kondisional->kolomStatus;
-        $this->assertNotNull($kolomStatus);
+        $tahapan = Tahapan::semua();
+        $terisi = intdiv(count($tahapan), 2);
 
-        $bidang = $this->bidang([$kolomStatus => StatusTahap::TidakBerlaku->value]);
-
-        $kolomBerlaku = array_map(
-            fn (Tahap $tahap): string => $tahap->kolom,
-            $bidang->tahapBerlaku()
-        );
-
-        $this->assertNotContains($kondisional->kolom, $kolomBerlaku);
-        $this->assertCount(Tahapan::jumlah() - 1, $bidang->tahapBerlaku());
-    }
-
-    public function test_tahap_tidak_berlaku_dilewati_saat_menentukan_tahap_berikut(): void
-    {
-        $kondisional = $this->tahapKondisional();
-        $kolomStatus = $kondisional->kolomStatus;
-        $this->assertNotNull($kolomStatus);
-
-        // Isi seluruh tahap sebelum tahap kondisional itu.
         $tanggal = [];
-        $mulai = CarbonImmutable::parse('2026-01-05');
 
-        foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->urutan >= $kondisional->urutan) {
-                break;
-            }
-
-            $tanggal[$tahap->kolom] = $mulai->addDays($tahap->urutan * 10)->toDateString();
-        }
-
-        $bidang = $this->bidang($tanggal + [$kolomStatus => StatusTahap::TidakBerlaku->value]);
-
-        $sesudahnya = $this->tahapSetelah($kondisional);
-
-        $this->assertSame($sesudahnya?->kolom, $bidang->tahapBerikut?->kolom);
-        $this->assertSame($sesudahnya?->penanggungJawab, $bidang->penanggungJawab);
-    }
-
-    public function test_persen_progres_memakai_penyebut_tahap_berlaku_saja(): void
-    {
-        $kondisional = $this->tahapKondisional();
-        $kolomStatus = $kondisional->kolomStatus;
-        $this->assertNotNull($kolomStatus);
-
-        $bidang = $this->bidang([$kolomStatus => StatusTahap::TidakBerlaku->value]);
-
-        // Isi separuh (dibulatkan ke bawah) dari tahap yang berlaku.
-        $berlaku = $bidang->tahapBerlaku();
-        $terisi = intdiv(count($berlaku), 2);
-
-        foreach (array_slice($berlaku, 0, $terisi) as $tahap) {
-            $bidang->setAttribute($tahap->kolom, '2026-03-0'.min($tahap->urutan, 9));
+        foreach (array_slice($tahapan, 0, $terisi) as $tahap) {
+            $tanggal[$tahap->kolom] = '2026-03-0'.min($tahap->urutan, 9);
         }
 
         $this->assertSame(
-            (int) round($terisi / count($berlaku) * 100),
-            $bidang->persenProgres
+            (int) round($terisi / count($tahapan) * 100),
+            $this->bidang($tanggal)->persenProgres
         );
-    }
-
-    public function test_tanggal_pada_tahap_tidak_berlaku_tidak_ikut_dihitung(): void
-    {
-        $kondisional = $this->tahapKondisional();
-        $kolomStatus = $kondisional->kolomStatus;
-        $this->assertNotNull($kolomStatus);
-
-        // Operator terlanjur mengisi tanggal, lalu tahapnya ditandai tidak berlaku.
-        $bidang = $this->bidang([
-            $kolomStatus => StatusTahap::TidakBerlaku->value,
-            $kondisional->kolom => '2026-02-10',
-        ]);
-
-        $this->assertNull($bidang->tahapAktif);
-        $this->assertSame(0, $bidang->persenProgres);
     }
 
     public function test_bidang_tuntas(): void
     {
-        $tanggal = [];
-        $mulai = CarbonImmutable::parse('2025-01-10');
-
-        foreach (Tahapan::semua() as $tahap) {
-            $tanggal[$tahap->kolom] = $mulai->addDays($tahap->urutan * 20)->toDateString();
-        }
-
-        $bidang = $this->bidang($tanggal);
+        $bidang = $this->bidang($this->seluruhTanggal());
         $terakhir = Tahapan::semua()[Tahapan::jumlah() - 1];
 
         $this->assertSame($terakhir->kolom, $bidang->tahapAktif?->kolom);
         $this->assertNull($bidang->tahapBerikut);
         $this->assertNull($bidang->penanggungJawab);
         $this->assertSame(100, $bidang->persenProgres);
+        $this->assertSame(Bidang::KONDISI_TUNTAS, $bidang->kondisiTahap);
     }
 
     public function test_tahap_aktif_diambil_dari_tanggal_terisi_terjauh_walau_ada_tahap_dilewati(): void
     {
-        $berlaku = $this->bidang()->tahapBerlaku();
+        $tahapan = Tahapan::semua();
 
         // Operator mengisi tahap ke-1 dan ke-3, tahap ke-2 dilewati.
         $bidang = $this->bidang([
-            $berlaku[0]->kolom => '2026-01-05',
-            $berlaku[2]->kolom => '2026-03-05',
+            $tahapan[0]->kolom => '2026-01-05',
+            $tahapan[2]->kolom => '2026-03-05',
         ]);
 
-        $this->assertSame($berlaku[2]->kolom, $bidang->tahapAktif?->kolom);
-        $this->assertSame($berlaku[3]->kolom, $bidang->tahapBerikut?->kolom);
-        $this->assertSame($berlaku[3]->penanggungJawab, $bidang->penanggungJawab);
+        $this->assertSame($tahapan[2]->kolom, $bidang->tahapAktif?->kolom);
+        $this->assertSame($tahapan[3]->kolom, $bidang->tahapBerikut?->kolom);
+        $this->assertSame($tahapan[3]->penanggungJawab, $bidang->penanggungJawab);
+    }
+
+    /**
+     * Kondisi berjalan disebut dengan label_menunggu tahap yang ditunggu,
+     * bukan label tahap yang sudah selesai.
+     */
+    public function test_kondisi_tahap_memakai_label_menunggu_tahap_berikut(): void
+    {
+        $tahapan = Tahapan::semua();
+
+        $bidang = $this->bidang([$tahapan[0]->kolom => '2026-01-05']);
+
+        $this->assertSame($tahapan[1]->labelMenunggu, $bidang->kondisiTahap);
     }
 
     public function test_umur_hari_dihitung_sampai_sertipikat_terbit(): void
@@ -167,14 +111,51 @@ class BidangAccessorTest extends TestCase
 
     public function test_accessor_ikut_berubah_saat_tanggal_diperbarui(): void
     {
-        $berlaku = $this->bidang()->tahapBerlaku();
+        $tahapan = Tahapan::semua();
 
-        $bidang = $this->bidang([$berlaku[0]->kolom => '2026-01-05']);
-        $this->assertSame($berlaku[0]->kolom, $bidang->tahapAktif?->kolom);
+        $bidang = $this->bidang([$tahapan[0]->kolom => '2026-01-05']);
+        $this->assertSame($tahapan[0]->kolom, $bidang->tahapAktif?->kolom);
 
-        $bidang->setAttribute($berlaku[1]->kolom, '2026-02-05');
+        $bidang->setAttribute($tahapan[1]->kolom, '2026-02-05');
 
-        $this->assertSame($berlaku[1]->kolom, $bidang->tahapAktif?->kolom);
+        $this->assertSame($tahapan[1]->kolom, $bidang->tahapAktif?->kolom);
+    }
+
+    public function test_status_hitung_proses_saat_sertipikat_belum_terbit(): void
+    {
+        $bidang = $this->bidang([Tahapan::pertama()->kolom => '2026-01-05']);
+
+        $this->assertSame(StatusBidang::Proses, $bidang->statusHitung);
+    }
+
+    public function test_status_hitung_selesai_saat_sertipikat_terbit(): void
+    {
+        $bidang = $this->bidang([
+            Tahapan::pertama()->kolom => '2026-01-05',
+            Bidang::KOLOM_TERBIT => '2026-05-05',
+        ]);
+
+        $this->assertSame(StatusBidang::Selesai, $bidang->statusHitung);
+    }
+
+    public function test_status_hitung_diserahkan_saat_serah_terima_terisi(): void
+    {
+        $bidang = $this->bidang($this->seluruhTanggal());
+
+        $this->assertSame(StatusBidang::Diserahkan, $bidang->statusHitung);
+    }
+
+    /**
+     * Kendala aktif menang atas seluruh syarat lain, termasuk atas bidang yang
+     * sudah diserahkan.
+     */
+    public function test_status_hitung_terkendala_menang_atas_yang_lain(): void
+    {
+        $bidang = $this->bidang($this->seluruhTanggal());
+
+        $bidang->setRelation('kendalaAktif', new Collection([new Kendala]));
+
+        $this->assertSame(StatusBidang::Terkendala, $bidang->statusHitung);
     }
 
     /**
@@ -185,19 +166,20 @@ class BidangAccessorTest extends TestCase
         return (new Bidang)->forceFill($atribut);
     }
 
-    private function tahapKondisional(): Tahap
+    /**
+     * Seluruh tahap terisi, berjarak wajar.
+     *
+     * @return array<string, string>
+     */
+    private function seluruhTanggal(): array
     {
+        $tanggal = [];
+        $mulai = CarbonImmutable::parse('2025-01-10');
+
         foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->kondisional()) {
-                return $tahap;
-            }
+            $tanggal[$tahap->kolom] = $mulai->addDays($tahap->urutan * 20)->toDateString();
         }
 
-        $this->markTestSkipped('config/tahapan.php tidak punya tahap kondisional.');
-    }
-
-    private function tahapSetelah(Tahap $tahap): ?Tahap
-    {
-        return Tahapan::semua()[$tahap->urutan] ?? null;
+        return $tanggal;
     }
 }

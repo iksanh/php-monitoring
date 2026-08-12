@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
+use App\Enums\KategoriKendala;
 use App\Models\Bidang;
 use App\Models\Kendala;
 use Carbon\CarbonImmutable;
@@ -22,23 +23,42 @@ class KendalaFactory extends Factory
      */
     public function definition(): array
     {
+        $kategori = fake()->randomElement(KategoriKendala::cases());
+
         return [
             'bidang_id' => Bidang::factory(),
-            'uraian' => fake()->randomElement([
-                'Batas bidang belum disepakati dengan pemilik tanah bersebelahan.',
-                'Dokumen alas hak belum lengkap, menunggu salinan dari bagian aset.',
-                'Objek tumpang tindih dengan bidang terdaftar, perlu pengecekan peta.',
-                'Berkas belum diinput ke KKP karena antrean loket.',
-                'Pemohon belum menyampaikan bukti pemenuhan kewajiban.',
-                'Tanah masih dikuasai pihak ketiga, perlu koordinasi dengan Kejaksaan.',
-                'Menunggu jadwal sidang panitia pemeriksa tanah.',
-            ]),
+            'kategori' => $kategori,
+            'uraian' => $this->uraian($kategori),
             'tanggal_catat' => CarbonImmutable::now()->subDays(fake()->numberBetween(10, 300)),
             'tanggal_selesai' => null,
             'dicatat_oleh' => fake()->randomElement([
                 'Andi Prasetyo', 'Siti Rahmawati', 'Bayu Nugroho', 'Dewi Lestari', 'Rudi Hartono',
             ]),
         ];
+    }
+
+    public function kategori(KategoriKendala $kategori): static
+    {
+        return $this->state(fn (): array => [
+            'kategori' => $kategori,
+            'uraian' => $this->uraian($kategori),
+        ]);
+    }
+
+    /**
+     * Uraian yang cocok dengan kategorinya, supaya data contoh tidak
+     * bertentangan sendiri.
+     */
+    private function uraian(KategoriKendala $kategori): string
+    {
+        return match ($kategori) {
+            KategoriKendala::BerkasKurang => 'Dokumen alas hak belum lengkap, menunggu salinan dari bagian aset.',
+            KategoriKendala::MenungguPemohon => 'Pemohon belum menyampaikan kelengkapan yang diminta petugas.',
+            KategoriKendala::Sengketa => 'Tanah masih dikuasai pihak ketiga, perlu koordinasi dengan Kejaksaan.',
+            KategoriKendala::OverlapBidang => 'Objek tumpang tindih dengan bidang terdaftar, perlu pengecekan peta.',
+            KategoriKendala::KawasanHutan => 'Objek terindikasi masuk kawasan hutan, menunggu hasil telaah.',
+            KategoriKendala::Lainnya => 'Batas bidang belum disepakati dengan pemilik tanah bersebelahan.',
+        };
     }
 
     /**

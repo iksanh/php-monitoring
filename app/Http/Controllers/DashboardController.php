@@ -19,6 +19,7 @@ class DashboardController extends Controller
             'kartu' => $dashboard->kartuAngka($tahun),
             'sebaran' => $dashboard->sebaranTertahan(),
             'perPenanggungJawab' => $dashboard->tertahanPerPenanggungJawab(),
+            'perKategoriKendala' => $dashboard->terkendalaPerKategori($tahun),
             'capaian' => $dashboard->capaianPerInstansi($tahun),
             'terlama' => $dashboard->bidangTerlama(),
             'pemutakhiran' => $pemutakhiran,

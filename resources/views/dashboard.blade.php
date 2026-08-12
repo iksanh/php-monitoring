@@ -9,7 +9,9 @@
 
     $grafikTertahan = [
         'bentuk' => 'tertahan',
-        'label' => array_map(fn ($baris) => $baris->tahap->label, $sebaran),
+        // Grafik menyebut kondisi berjalan, jadi label sumbunya memakai
+        // label_menunggu — lihat docs/spec.md bagian 6.
+        'label' => array_map(fn ($baris) => $baris->tahap->labelMenunggu, $sebaran),
         'nilai' => array_map(fn ($baris) => $baris->jumlah, $sebaran),
         'warna' => $biru,
     ];
@@ -106,7 +108,7 @@
                 <table class="mt-3 w-full min-w-lg text-sm">
                     <thead class="text-left text-xs uppercase tracking-wide text-zinc-500">
                         <tr>
-                            <th class="py-1">Tahap</th>
+                            <th class="py-1">Sedang ditunggu</th>
                             <th class="py-1">Unit pelaksana</th>
                             <th class="py-1">Penanggung jawab</th>
                             <th class="py-1 text-right">Bidang</th>
@@ -115,7 +117,7 @@
                     <tbody class="divide-y divide-zinc-100">
                         @foreach ($sebaran as $baris)
                             <tr>
-                                <td class="py-1.5">{{ $baris->tahap->label }}</td>
+                                <td class="py-1.5">{{ $baris->tahap->labelMenunggu }}</td>
                                 <td class="py-1.5 text-zinc-500">{{ $baris->tahap->unit }}</td>
                                 <td class="py-1.5 text-zinc-500">{{ $baris->tahap->penanggungJawab->label() }}</td>
                                 <td class="py-1.5 text-right tabular-nums">{{ $baris->jumlah }}</td>
@@ -150,6 +152,41 @@
             </ul>
         </section>
     </div>
+
+    {{-- Rincian bidang terkendala menurut kategori kendala yang masih terbuka. --}}
+    @php
+        $totalKendala = array_sum($perKategoriKendala);
+        $puncakKendala = $perKategoriKendala === [] ? 0 : max($perKategoriKendala);
+    @endphp
+
+    <section class="mt-4 rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
+        <h2 class="text-sm font-semibold text-zinc-700">Bidang terkendala menurut kategori</h2>
+        <p class="text-xs text-zinc-500">
+            Kendala yang masih terbuka pada bidang target {{ $tahun }}.
+            Satu bidang dihitung sekali per kategori.
+        </p>
+
+        @if ($totalKendala === 0)
+            <p class="mt-4 text-sm text-zinc-500">Tidak ada kendala terbuka pada tahun target ini.</p>
+        @else
+            <ul class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                @foreach ($perKategoriKendala as $nilai => $jumlah)
+                    <li>
+                        <div class="flex items-baseline justify-between gap-3 text-sm">
+                            <span class="{{ $jumlah > 0 ? 'text-zinc-800' : 'text-zinc-400' }}">
+                                {{ \App\Enums\KategoriKendala::from($nilai)->label() }}
+                            </span>
+                            <span class="shrink-0 tabular-nums {{ $jumlah > 0 ? 'font-medium' : 'text-zinc-400' }}">{{ $jumlah }}</span>
+                        </div>
+                        <div class="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-zinc-100">
+                            <div class="h-full rounded-full bg-amber-500"
+                                 style="width: {{ $puncakKendala > 0 ? round($jumlah / $puncakKendala * 100) : 0 }}%"></div>
+                        </div>
+                    </li>
+                @endforeach
+            </ul>
+        @endif
+    </section>
 
     <div class="mt-4 grid gap-4 lg:grid-cols-2 lg:items-start">
         <section class="rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
@@ -198,9 +235,7 @@
                         </div>
                         <p class="mt-1 text-xs text-zinc-500">{{ $bidang->instansi->nama }}</p>
                         <p class="mt-1 text-xs text-zinc-600">
-                            {{ $bidang->tahapAktif?->label ?? 'Belum mulai' }}
-                            <span class="text-zinc-400">→</span>
-                            {{ $bidang->tahapBerikut?->label ?? '—' }}
+                            <x-pm.kondisi :bidang="$bidang" />
                             <span class="text-zinc-400">·</span>
                             {{ $bidang->penanggungJawab?->label() ?? '—' }}
                         </p>
@@ -216,8 +251,8 @@
                         <tr>
                             <th class="py-2">Nama aset</th>
                             <th class="py-2">Instansi</th>
-                            <th class="py-2">Tahap aktif</th>
-                            <th class="hidden py-2 xl:table-cell">Tahap berikut</th>
+                            <th class="py-2">Sedang menunggu</th>
+                            <th class="hidden py-2 xl:table-cell">Tahap aktif</th>
                             <th class="hidden py-2 xl:table-cell">Penanggung jawab</th>
                             <th class="py-2 text-right">Umur</th>
                         </tr>
@@ -231,8 +266,8 @@
                                     </a>
                                 </td>
                                 <td class="py-2 text-zinc-500">{{ $bidang->instansi->nama }}</td>
-                                <td class="py-2">{{ $bidang->tahapAktif?->label ?? 'Belum mulai' }}</td>
-                                <td class="hidden py-2 xl:table-cell">{{ $bidang->tahapBerikut?->label ?? '—' }}</td>
+                                <td class="py-2"><x-pm.kondisi :bidang="$bidang" /></td>
+                                <td class="hidden py-2 text-zinc-500 xl:table-cell">{{ $bidang->tahapAktif?->label ?? 'Belum mulai' }}</td>
                                 <td class="hidden py-2 text-zinc-500 xl:table-cell">{{ $bidang->penanggungJawab?->label() ?? '—' }}</td>
                                 <td class="py-2 text-right font-medium tabular-nums">{{ $bidang->umurHari }} hari</td>
                             </tr>

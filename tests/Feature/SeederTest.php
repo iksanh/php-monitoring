@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Enums\Peran;
 use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
 use App\Models\Bidang;
 use App\Models\Instansi;
 use App\Models\Kendala;
@@ -76,15 +75,43 @@ class SeederTest extends TestCase
         }
     }
 
-    public function test_ada_bidang_dengan_tahap_kondisional_tidak_berlaku(): void
+    /**
+     * Sebaran contoh harus meniru kondisi riil kantor (docs/spec.md bagian 7):
+     * penumpukan di tahap tengah, bukan sebaran rata.
+     */
+    public function test_sebaran_menumpuk_di_tahap_tengah(): void
     {
-        foreach (Tahapan::kolomStatus() as $kolom) {
-            $this->assertGreaterThan(
-                0,
-                Bidang::query()->where($kolom, StatusTahap::TidakBerlaku)->count(),
-                "Tidak ada bidang dengan {$kolom} = tidak_berlaku."
+        $tahapan = Tahapan::semua();
+        $tengah = array_slice($tahapan, 2, 3);
+
+        $menunggu = [];
+
+        foreach (Bidang::query()->get() as $bidang) {
+            $berikut = $bidang->tahapBerikut?->kolom;
+
+            if ($berikut !== null) {
+                $menunggu[$berikut] = ($menunggu[$berikut] ?? 0) + 1;
+            }
+        }
+
+        foreach ($tengah as $tahap) {
+            $this->assertGreaterThanOrEqual(
+                3,
+                $menunggu[$tahap->kolom] ?? 0,
+                "Data contoh tidak punya cukup bidang yang menunggu tahap {$tahap->label}."
             );
         }
+    }
+
+    public function test_kendala_contoh_memakai_kategori_yang_beragam(): void
+    {
+        $kategori = Kendala::query()->whereNull('tanggal_selesai')->pluck('kategori')->unique();
+
+        $this->assertGreaterThan(
+            2,
+            $kategori->count(),
+            'Rincian kendala per kategori di dashboard tidak bermakna bila kategorinya seragam.'
+        );
     }
 
     public function test_ada_bidang_belum_mulai_dan_bidang_tuntas(): void

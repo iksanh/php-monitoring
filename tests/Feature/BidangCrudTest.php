@@ -6,12 +6,10 @@ namespace Tests\Feature;
 
 use App\Enums\Peran;
 use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
 use App\Models\Bidang;
 use App\Models\Instansi;
 use App\Models\Kendala;
 use App\Models\User;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -72,24 +70,45 @@ class BidangCrudTest extends TestCase
         $this->assertNull($bidang->tanggalTahap($tahapan[1]));
     }
 
-    public function test_tahap_kondisional_dapat_dinyatakan_tidak_berlaku(): void
+    /**
+     * Status turunan tanggal tahap, bukan isian operator — docs/spec.md
+     * bagian 3.
+     */
+    public function test_status_mengikuti_tanggal_tahap_yang_disimpan(): void
     {
         $instansi = Instansi::factory()->create();
-        $kondisional = $this->tahapKondisional();
-
-        $data = $this->data($instansi);
-        $data[$kondisional->kolomStatus] = StatusTahap::TidakBerlaku->value;
 
         $this->actingAs($this->operator())
-            ->post(route('bidang.store'), $data)
+            ->post(route('bidang.store'), $this->data($instansi))
             ->assertSessionHasNoErrors();
 
         $bidang = Bidang::query()->where('nomor_urut', 'HP-UJI-1')->firstOrFail();
+        $this->assertSame(StatusBidang::Proses, $bidang->status);
 
-        $this->assertCount(Tahapan::jumlah() - 1, $bidang->tahapBerlaku());
+        $data = $this->data($instansi);
+        $data[Bidang::KOLOM_TERBIT] = '2026-05-05';
+
+        $this->actingAs($this->operator())
+            ->put(route('bidang.update', $bidang), $data)
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(StatusBidang::Selesai, $bidang->refresh()->status);
+
+        $data[Bidang::KOLOM_SERAH_TERIMA] = '2026-06-05';
+
+        $this->actingAs($this->operator())
+            ->put(route('bidang.update', $bidang), $data)
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame(StatusBidang::Diserahkan, $bidang->refresh()->status);
+
+        $this->actingAs($this->operator())
+            ->get(route('bidang.show', $bidang))
+            ->assertOk()
+            ->assertSee('Sudah diserahkan');
     }
 
-    public function test_status_sudah_diserahkan_dapat_disimpan_dan_ditampilkan(): void
+    public function test_status_yang_dikirim_dari_form_diabaikan(): void
     {
         $instansi = Instansi::factory()->create();
 
@@ -102,22 +121,15 @@ class BidangCrudTest extends TestCase
 
         $bidang = Bidang::query()->where('nomor_urut', 'HP-UJI-1')->firstOrFail();
 
-        $this->assertSame(StatusBidang::Diserahkan, $bidang->status);
-
-        $this->actingAs($this->operator())
-            ->get(route('bidang.show', $bidang))
-            ->assertOk()
-            ->assertSee('Sudah diserahkan');
+        $this->assertSame(StatusBidang::Proses, $bidang->status);
     }
 
-    public function test_pilihan_status_pada_form_memuat_seluruh_status(): void
+    public function test_form_tidak_lagi_punya_isian_status(): void
     {
-        $halaman = $this->actingAs($this->operator())->get(route('bidang.create'));
-
-        foreach (StatusBidang::cases() as $status) {
-            $halaman->assertSee('value="'.$status->value.'"', escape: false)
-                ->assertSee($status->label());
-        }
+        $this->actingAs($this->operator())
+            ->get(route('bidang.create'))
+            ->assertOk()
+            ->assertDontSee('name="status"', escape: false);
     }
 
     public function test_nomor_urut_harus_unik(): void
@@ -177,23 +189,12 @@ class BidangCrudTest extends TestCase
         }
     }
 
-    public function test_halaman_detail_menandai_tahap_yang_tidak_berlaku(): void
-    {
-        $kondisional = $this->tahapKondisional();
-        $bidang = Bidang::factory()->tanpaTahap($kondisional->kolom)->create();
-
-        $this->actingAs($this->operator())
-            ->get(route('bidang.show', $bidang))
-            ->assertOk()
-            ->assertSee('tidak berlaku untuk bidang ini');
-    }
-
     /**
      * @return array<string, mixed>
      */
     private function data(Instansi $instansi): array
     {
-        $data = [
+        return [
             'nomor_urut' => 'HP-UJI-1',
             'nama_aset' => 'Kantor Kecamatan Uji',
             'instansi_id' => $instansi->id,
@@ -204,29 +205,11 @@ class BidangCrudTest extends TestCase
             'nomor_berkas_kkp' => '123/HP/2026',
             'tahun_target' => 2026,
             'keterangan' => null,
-            'status' => StatusBidang::Proses->value,
         ];
-
-        foreach (Tahapan::kolomStatus() as $kolom) {
-            $data[$kolom] = StatusTahap::Berlaku->value;
-        }
-
-        return $data;
     }
 
     private function operator(): User
     {
         return User::factory()->peran(Peran::Operator)->create();
-    }
-
-    private function tahapKondisional(): Tahap
-    {
-        foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->kondisional()) {
-                return $tahap;
-            }
-        }
-
-        $this->markTestSkipped('config/tahapan.php tidak punya tahap kondisional.');
     }
 }

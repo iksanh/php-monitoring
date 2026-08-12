@@ -6,11 +6,12 @@ namespace App\Models;
 
 use App\Enums\PenanggungJawab;
 use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
+use App\Observers\BidangObserver;
 use App\Support\Tahap;
 use App\Support\Tahapan;
 use Carbon\CarbonInterface;
 use Database\Factories\BidangFactory;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -38,12 +39,16 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $deleted_at
  * @property-read Instansi $instansi
  * @property-read Collection<int, Kendala> $kendala
+ * @property-read Collection<int, Kendala> $kendalaAktif
  * @property-read Tahap|null $tahapAktif
  * @property-read Tahap|null $tahapBerikut
  * @property-read PenanggungJawab|null $penanggungJawab
  * @property-read int|null $umurHari
  * @property-read int $persenProgres
+ * @property-read StatusBidang $statusHitung
+ * @property-read string $kondisiTahap
  */
+#[ObservedBy(BidangObserver::class)]
 class Bidang extends Model
 {
     /** @use HasFactory<BidangFactory> */
@@ -58,11 +63,25 @@ class Bidang extends Model
      */
     public const KOLOM_TERBIT = 'tgl_sertipikat';
 
+    /**
+     * Kolom penanda aset sudah diserahkan, dipakai menghitung status.
+     *
+     * Alasannya sama dengan KOLOM_TERBIT: "sudah diserahkan" adalah definisi
+     * status menurut docs/spec.md bagian 3, bukan posisi tahap.
+     */
+    public const KOLOM_SERAH_TERIMA = 'tgl_serah_terima';
+
+    /**
+     * Sebutan bidang yang seluruh tahapnya sudah terisi.
+     */
+    public const KONDISI_TUNTAS = 'Sudah Diserahkan';
+
     protected $table = 'bidang';
 
     /**
-     * Kolom tanggal tahap dan kolom statusnya ditambahkan secara dinamis
-     * dari config('tahapan') — lihat getFillable().
+     * Kolom tanggal tahap ditambahkan secara dinamis dari config('tahapan') —
+     * lihat getFillable(). `status` sengaja TIDAK fillable: nilainya turunan,
+     * dihitung BidangObserver, bukan dikirim operator.
      *
      * @var list<string>
      */
@@ -77,7 +96,6 @@ class Bidang extends Model
         'nomor_berkas_kkp',
         'tahun_target',
         'keterangan',
-        'status',
     ];
 
     /**
@@ -88,7 +106,6 @@ class Bidang extends Model
         return array_values(array_unique(array_merge(
             $this->fillable,
             Tahapan::kolomTanggal(),
-            Tahapan::kolomStatus(),
         )));
     }
 
@@ -109,31 +126,25 @@ class Bidang extends Model
     }
 
     /**
-     * Tahap yang berlaku untuk bidang ini: seluruh tahap dari config, dikurangi
-     * tahap kondisional yang dinyatakan `tidak_berlaku`.
+     * @return HasMany<Kendala, $this>
+     */
+    public function kendalaAktif(): HasMany
+    {
+        return $this->kendala()->whereNull('tanggal_selesai');
+    }
+
+    /**
+     * Tahap yang berlaku untuk bidang ini: seluruh tahap dari config.
+     *
+     * Sejak daftar tahapan disederhanakan, tidak ada lagi tahap kondisional —
+     * metode ini disisakan sebagai satu pintu baca supaya pemanggilnya tidak
+     * perlu berubah bila kelak ada pengecualian per bidang lagi.
      *
      * @return list<Tahap>
      */
     public function tahapBerlaku(): array
     {
-        return array_values(array_filter(
-            Tahapan::semua(),
-            fn (Tahap $tahap): bool => $this->tahapDipakai($tahap),
-        ));
-    }
-
-    /**
-     * Apakah tahap ini dihitung untuk bidang ini.
-     */
-    public function tahapDipakai(Tahap $tahap): bool
-    {
-        if ($tahap->kolomStatus === null) {
-            return true;
-        }
-
-        $status = $this->getAttribute($tahap->kolomStatus);
-
-        return ! $status instanceof StatusTahap || $status->berlaku();
+        return Tahapan::semua();
     }
 
     /**
@@ -233,29 +244,89 @@ class Bidang extends Model
     }
 
     /**
-     * Persentase tahap berlaku yang tanggalnya sudah terisi.
+     * Persentase tahap yang tanggalnya sudah terisi.
      *
      * @return Attribute<int, never>
      */
     protected function persenProgres(): Attribute
     {
         return Attribute::make(get: function (): int {
-            $berlaku = $this->tahapBerlaku();
+            $tahapan = $this->tahapBerlaku();
 
-            if ($berlaku === []) {
+            if ($tahapan === []) {
                 return 0;
             }
 
             $terisi = 0;
 
-            foreach ($berlaku as $tahap) {
+            foreach ($tahapan as $tahap) {
                 if ($this->tanggalTahap($tahap) !== null) {
                     $terisi++;
                 }
             }
 
-            return (int) round($terisi / count($berlaku) * 100);
+            return (int) round($terisi / count($tahapan) * 100);
         });
+    }
+
+    /**
+     * Status menurut tanggal tahap dan kendala aktif — lihat tabel di
+     * docs/spec.md bagian 3. `terkendala` menang atas yang lain.
+     *
+     * Ini sumber nilai kolom `status`; operator tidak mengisinya sendiri.
+     *
+     * @return Attribute<StatusBidang, never>
+     */
+    protected function statusHitung(): Attribute
+    {
+        return Attribute::make(get: function (): StatusBidang {
+            if ($this->adaKendalaAktif()) {
+                return StatusBidang::Terkendala;
+            }
+
+            if ($this->getAttribute(self::KOLOM_SERAH_TERIMA) !== null) {
+                return StatusBidang::Diserahkan;
+            }
+
+            if ($this->getAttribute(self::KOLOM_TERBIT) !== null) {
+                return StatusBidang::Selesai;
+            }
+
+            return StatusBidang::Proses;
+        })->withoutObjectCaching();
+    }
+
+    /**
+     * Kondisi berjalan bidang ini, yaitu apa yang sedang ditunggu. Dipakai di
+     * daftar bidang, tabel bidang terlama, dan label grafik — lihat aturan
+     * pemakaian label di docs/spec.md bagian 6.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function kondisiTahap(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => $this->tahapBerikut?->labelMenunggu ?? self::KONDISI_TUNTAS
+        )->withoutObjectCaching();
+    }
+
+    /**
+     * Punya kendala yang belum ditutup.
+     *
+     * Relasi yang sudah di-eager load dipakai apa adanya supaya halaman daftar
+     * dan dashboard tidak memicu query per baris.
+     */
+    public function adaKendalaAktif(): bool
+    {
+        if ($this->relationLoaded('kendalaAktif')) {
+            return $this->kendalaAktif->isNotEmpty();
+        }
+
+        if ($this->relationLoaded('kendala')) {
+            return $this->kendala->contains(fn (Kendala $kendala): bool => ! $kendala->selesai());
+        }
+
+        return $this->exists && $this->kendalaAktif()->exists();
     }
 
     /**
@@ -271,10 +342,6 @@ class Bidang extends Model
 
         foreach (Tahapan::semua() as $tahap) {
             $casts[$tahap->kolom] = 'date';
-
-            if ($tahap->kolomStatus !== null) {
-                $casts[$tahap->kolomStatus] = StatusTahap::class;
-            }
         }
 
         return $casts;

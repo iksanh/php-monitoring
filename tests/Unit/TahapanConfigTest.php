@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Unit;
 
-use App\Enums\SifatTahap;
 use App\Models\Bidang;
 use App\Support\Tahapan;
 use Tests\TestCase;
@@ -25,6 +24,7 @@ class TahapanConfigTest extends TestCase
             $this->assertSame($index + 1, $tahap->urutan);
             $this->assertNotSame('', $tahap->kolom);
             $this->assertNotSame('', $tahap->label);
+            $this->assertNotSame('', $tahap->labelMenunggu);
             $this->assertNotSame('', $tahap->unit);
             $this->assertNotSame('', $tahap->dokumen);
         }
@@ -37,17 +37,15 @@ class TahapanConfigTest extends TestCase
         $this->assertSame($kolom, array_values(array_unique($kolom)));
     }
 
-    public function test_hanya_tahap_kondisional_yang_punya_kolom_status(): void
+    /**
+     * Label menunggu dipakai sebagai label sumbu grafik dan kolom daftar
+     * bidang; dua tahap dengan label sama membuat keduanya tak terbedakan.
+     */
+    public function test_label_menunggu_unik(): void
     {
-        foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->sifat === SifatTahap::Kondisional) {
-                $this->assertNotNull($tahap->kolomStatus, "Tahap {$tahap->kolom} kondisional tanpa kolom_status.");
+        $label = array_map(fn ($tahap): string => $tahap->labelMenunggu, Tahapan::semua());
 
-                continue;
-            }
-
-            $this->assertNull($tahap->kolomStatus, "Tahap {$tahap->kolom} wajib tetapi punya kolom_status.");
-        }
+        $this->assertSame($label, array_values(array_unique($label)));
     }
 
     public function test_semua_kolom_tahap_dapat_diisi_massal_pada_model_bidang(): void
@@ -56,18 +54,28 @@ class TahapanConfigTest extends TestCase
 
         foreach (Tahapan::semua() as $tahap) {
             $this->assertContains($tahap->kolom, $fillable);
-
-            if ($tahap->kolomStatus !== null) {
-                $this->assertContains($tahap->kolomStatus, $fillable);
-            }
         }
     }
 
-    public function test_kolom_penanda_terbit_ada_di_config(): void
+    /**
+     * Status adalah nilai turunan yang ditulis BidangObserver — bukan isian
+     * yang boleh dikirim dari form.
+     */
+    public function test_status_tidak_dapat_diisi_massal(): void
+    {
+        $this->assertNotContains('status', (new Bidang)->getFillable());
+    }
+
+    public function test_kolom_penanda_terbit_dan_serah_terima_ada_di_config(): void
     {
         $this->assertNotNull(
             Tahapan::cari(Bidang::KOLOM_TERBIT),
             'Bidang::KOLOM_TERBIT harus menunjuk salah satu kolom pada config/tahapan.php.'
+        );
+
+        $this->assertNotNull(
+            Tahapan::cari(Bidang::KOLOM_SERAH_TERIMA),
+            'Bidang::KOLOM_SERAH_TERIMA harus menunjuk salah satu kolom pada config/tahapan.php.'
         );
     }
 }

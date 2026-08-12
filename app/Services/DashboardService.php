@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\KategoriKendala;
 use App\Enums\PenanggungJawab;
 use App\Enums\StatusBidang;
 use App\Models\Bidang;
+use App\Models\Kendala;
 use App\Support\Dashboard\CapaianInstansi;
 use App\Support\Dashboard\KartuAngka;
 use App\Support\Dashboard\TahapTertahan;
@@ -15,6 +17,7 @@ use App\Support\Tahap;
 use App\Support\Tahapan;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Seluruh query dashboard bermuara di sini — controller hanya merangkai.
@@ -111,6 +114,45 @@ class DashboardService
     }
 
     /**
+     * Rincian bidang terkendala menurut kategori kendala aktifnya.
+     *
+     * Yang dihitung bidang, bukan baris kendala: satu bidang dengan dua kendala
+     * kategori sama tetap terhitung sekali. Kategori tanpa isi tetap muncul
+     * bernilai nol supaya rinciannya terbaca lengkap.
+     *
+     * @return array<string, int> nilai enum KategoriKendala => jumlah bidang
+     */
+    public function terkendalaPerKategori(?int $tahun = null): array
+    {
+        $hasil = [];
+
+        foreach (KategoriKendala::cases() as $kategori) {
+            $hasil[$kategori->value] = 0;
+        }
+
+        $baris = Kendala::query()
+            ->join('bidang', 'bidang.id', '=', 'kendala.bidang_id')
+            ->whereNull('kendala.tanggal_selesai')
+            ->whereNull('bidang.deleted_at')
+            ->when($tahun !== null, fn ($query) => $query->where('bidang.tahun_target', $tahun))
+            ->groupBy('kendala.kategori')
+            ->select('kendala.kategori')
+            ->selectRaw('count(distinct kendala.bidang_id) as jml_bidang')
+            ->get();
+
+        foreach ($baris as $row) {
+            $kategori = $row->getAttribute('kategori');
+            $kunci = $kategori instanceof KategoriKendala ? $kategori->value : (string) $kategori;
+
+            if (array_key_exists($kunci, $hasil)) {
+                $hasil[$kunci] = $this->angka($row, 'jml_bidang');
+            }
+        }
+
+        return $hasil;
+    }
+
+    /**
      * @return list<CapaianInstansi>
      */
     public function capaianPerInstansi(?int $tahun = null): array
@@ -146,7 +188,7 @@ class DashboardService
         $kolomMulai = $this->syarat->kolomAman(Tahapan::pertama()->kolom);
 
         return Bidang::query()
-            ->with('instansi')
+            ->with(['instansi', 'kendalaAktif'])
             ->whereNull(Bidang::KOLOM_TERBIT)
             ->whereNotNull($kolomMulai)
             ->orderBy($kolomMulai)
@@ -182,7 +224,7 @@ class DashboardService
         return 'tertahan_'.$this->syarat->kolomAman($tahap->kolom);
     }
 
-    private function angka(?Bidang $baris, string $kunci): int
+    private function angka(?Model $baris, string $kunci): int
     {
         $nilai = $baris?->getAttribute($kunci);
 

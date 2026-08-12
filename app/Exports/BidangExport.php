@@ -6,7 +6,6 @@ namespace App\Exports;
 
 use App\Models\Bidang;
 use App\Support\Filter\FilterBidang;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use App\Support\Tanggal;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,7 +34,7 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
     public function query(): Builder
     {
         return $this->filter->terapkan(
-            Bidang::query()->with('instansi')->orderBy('nomor_urut')
+            Bidang::query()->with(['instansi', 'kendalaAktif'])->orderBy('nomor_urut')
         );
     }
 
@@ -62,7 +61,7 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
 
         return array_merge($judul, [
             'Tahap aktif',
-            'Tahap berikut',
+            'Sedang menunggu',
             'Penanggung jawab',
             'Umur (hari)',
             'Progres (%)',
@@ -90,15 +89,15 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
         ];
 
         foreach (Tahapan::semua() as $tahap) {
-            $baris[] = $this->tanggalTahap($row, $tahap);
+            $tanggal = $row->tanggalTahap($tahap);
+            $baris[] = $tanggal !== null ? Tanggal::pendek($tanggal) : '';
         }
 
         $aktif = $row->tahapAktif;
-        $berikut = $row->tahapBerikut;
 
         return array_merge($baris, [
             $aktif !== null ? $aktif->label : 'Belum mulai',
-            $berikut !== null ? $berikut->label : 'Tuntas',
+            $row->kondisiTahap,
             $row->penanggungJawab?->label() ?? '-',
             $row->umurHari,
             $row->persenProgres,
@@ -115,20 +114,5 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
         return [
             1 => ['font' => ['bold' => true]],
         ];
-    }
-
-    /**
-     * Tahap yang tidak berlaku ditandai jelas, bukan dibiarkan kosong — kolom
-     * kosong akan terbaca sebagai "belum dikerjakan".
-     */
-    private function tanggalTahap(Bidang $bidang, Tahap $tahap): string
-    {
-        if (! $bidang->tahapDipakai($tahap)) {
-            return 'tidak berlaku';
-        }
-
-        $tanggal = $bidang->tanggalTahap($tahap);
-
-        return $tanggal !== null ? Tanggal::pendek($tanggal) : '';
     }
 }

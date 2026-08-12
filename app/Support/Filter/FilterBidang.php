@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support\Filter;
 
+use App\Enums\KategoriKendala;
 use App\Enums\PenanggungJawab;
 use App\Enums\StatusBidang;
 use App\Models\Bidang;
@@ -33,6 +34,7 @@ final readonly class FilterBidang
         public ?string $tahapAktif = null,
         public ?PenanggungJawab $penanggungJawab = null,
         public ?StatusBidang $status = null,
+        public ?KategoriKendala $kategoriKendala = null,
         public ?int $tahunTarget = null,
     ) {}
 
@@ -47,6 +49,7 @@ final readonly class FilterBidang
             tahapAktif: self::tahapSah($tahap),
             penanggungJawab: PenanggungJawab::tryFrom((string) $request->query('penanggung_jawab', '')),
             status: StatusBidang::tryFrom((string) $request->query('status', '')),
+            kategoriKendala: KategoriKendala::tryFrom((string) $request->query('kendala', '')),
             tahunTarget: self::angka($request->query('tahun')),
         );
     }
@@ -78,6 +81,15 @@ final readonly class FilterBidang
 
         if ($this->tahunTarget !== null) {
             $query->where('tahun_target', $this->tahunTarget);
+        }
+
+        // Kategori disaring atas kendala yang MASIH terbuka — kendala yang
+        // sudah ditutup tersimpan sebagai riwayat, bukan kondisi berjalan.
+        if ($this->kategoriKendala !== null) {
+            $query->whereHas(
+                'kendalaAktif',
+                fn (Builder $bagian) => $bagian->where('kategori', $this->kategoriKendala)
+            );
         }
 
         if ($this->tahapAktif === self::BELUM_MULAI) {
@@ -119,6 +131,7 @@ final readonly class FilterBidang
             'tahap' => $this->tahapAktif,
             'penanggung_jawab' => $this->penanggungJawab?->value,
             'status' => $this->status?->value,
+            'kendala' => $this->kategoriKendala?->value,
             'tahun' => $this->tahunTarget !== null ? (string) $this->tahunTarget : null,
         ], fn (?string $nilai): bool => $nilai !== null && $nilai !== '');
     }

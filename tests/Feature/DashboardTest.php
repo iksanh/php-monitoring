@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Enums\KategoriKendala;
 use App\Models\Bidang;
+use App\Models\Kendala;
 use App\Models\User;
 use App\Services\DashboardService;
 use App\Support\Tahapan;
@@ -38,11 +40,28 @@ class DashboardTest extends TestCase
             ->assertSee('Capaian terhadap target')
             ->assertSee('Bidang tertahan di tiap tahap')
             ->assertSee('Capaian per instansi pemilik aset')
-            ->assertSee('Sepuluh bidang terlama belum selesai');
+            ->assertSee('Sepuluh bidang terlama belum selesai')
+            ->assertSee('Bidang terkendala menurut kategori');
 
-        // Label sumbu grafik dibaca dari config, bukan ditulis di Blade.
+        // Label sumbu grafik dibaca dari config, bukan ditulis di Blade. Yang
+        // dipakai label_menunggu, sebab grafik menyebut kondisi berjalan —
+        // lihat docs/spec.md bagian 6.
         foreach (Tahapan::semua() as $tahap) {
-            $halaman->assertSee($tahap->label);
+            $halaman->assertSee($tahap->labelMenunggu);
+        }
+    }
+
+    public function test_dashboard_merinci_bidang_terkendala_per_kategori(): void
+    {
+        $bidang = Bidang::factory()->tahunTarget((int) date('Y'))->create();
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->create(['bidang_id' => $bidang->id]);
+
+        $halaman = $this->actingAs(User::factory()->create())->get(route('dashboard'));
+
+        $halaman->assertOk();
+
+        foreach (KategoriKendala::cases() as $kategori) {
+            $halaman->assertSee($kategori->label());
         }
     }
 

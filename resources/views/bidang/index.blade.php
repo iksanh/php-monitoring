@@ -33,7 +33,7 @@
     </div>
 
     <form method="GET" action="{{ route('bidang.index') }}"
-          class="mb-4 grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-7">
+          class="mb-4 grid gap-3 rounded-lg border border-zinc-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="lg:col-span-2">
             <label for="cari" class="block text-xs font-medium text-zinc-600">Pencarian</label>
             <input type="search" name="cari" id="cari" value="{{ $filter->cari }}"
@@ -46,6 +46,7 @@
             ['tahap', 'Tahap aktif', $pilihanTahap, $filter->tahapAktif],
             ['penanggung_jawab', 'Penanggung jawab', \App\Enums\PenanggungJawab::pilihan(), $filter->penanggungJawab?->value],
             ['status', 'Status', \App\Enums\StatusBidang::pilihan(), $filter->status?->value],
+            ['kendala', 'Kategori kendala', \App\Enums\KategoriKendala::pilihan(), $filter->kategoriKendala?->value],
             ['tahun', 'Tahun target', array_combine($tahunTersedia, $tahunTersedia), $filter->tahunTarget],
         ] as [$nama, $label, $pilihan, $terpilih])
             <div>
@@ -60,7 +61,7 @@
             </div>
         @endforeach
 
-        <div class="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-7">
+        <div class="flex flex-wrap items-center gap-3 sm:col-span-2 lg:col-span-4">
             <button type="submit" class="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-700 sm:w-auto">
                 Terapkan
             </button>
@@ -103,8 +104,8 @@
                         </dd>
                     </div>
                     <div class="flex justify-between gap-3">
-                        <dt class="text-zinc-500">Tahap aktif</dt>
-                        <dd class="text-right">{{ $bidang->tahapAktif?->label ?? 'Belum mulai' }}</dd>
+                        <dt class="text-zinc-500">Sedang menunggu</dt>
+                        <dd class="text-right"><x-pm.kondisi :bidang="$bidang" /></dd>
                     </div>
                     <div class="flex justify-between gap-3">
                         <dt class="text-zinc-500">Penanggung jawab</dt>
@@ -146,7 +147,7 @@
                     <th class="px-4 py-3">Instansi</th>
                     <th class="px-4 py-3">Desa / Kecamatan</th>
                     <th class="hidden px-4 py-3 text-right xl:table-cell">Luas (m²)</th>
-                    <th class="px-4 py-3">Tahap aktif</th>
+                    <th class="px-4 py-3">Sedang menunggu</th>
                     <th class="px-4 py-3">Penanggung jawab</th>
                     <th class="px-4 py-3 text-right">Umur</th>
                     <th class="px-4 py-3">Status</th>
@@ -167,7 +168,7 @@
                         <td class="hidden px-4 py-3 text-right tabular-nums text-zinc-600 xl:table-cell">
                             {{ $bidang->luas_m2 !== null ? number_format((float) $bidang->luas_m2, 2, ',', '.') : '—' }}
                         </td>
-                        <td class="px-4 py-3">{{ $bidang->tahapAktif?->label ?? 'Belum mulai' }}</td>
+                        <td class="px-4 py-3"><x-pm.kondisi :bidang="$bidang" /></td>
                         <td class="px-4 py-3 text-zinc-600">{{ $bidang->penanggungJawab?->label() ?? '—' }}</td>
                         <td class="px-4 py-3 text-right tabular-nums">{{ $bidang->umurHari !== null ? $bidang->umurHari.' hari' : '—' }}</td>
                         <td class="px-4 py-3"><x-pm.badge :status="$bidang->status" /></td>

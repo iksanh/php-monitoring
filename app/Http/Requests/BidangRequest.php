@@ -4,19 +4,18 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
 use App\Models\Bidang;
 use App\Support\Tahapan;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Enum;
 
 class BidangRequest extends FormRequest
 {
     /**
      * Tidak ada validasi urutan tahap. Operator harus bebas mengisi tanggal
      * mana pun, termasuk melewati tahap — lihat docs/spec.md bagian 1.
+     *
+     * Tidak ada aturan `status`: nilainya turunan, dihitung BidangObserver.
      *
      * @return array<string, mixed>
      */
@@ -40,15 +39,10 @@ class BidangRequest extends FormRequest
             'nomor_berkas_kkp' => ['nullable', 'string', 'max:255'],
             'tahun_target' => ['required', 'integer', 'min:2000', 'max:2100'],
             'keterangan' => ['nullable', 'string', 'max:5000'],
-            'status' => ['required', new Enum(StatusBidang::class)],
         ];
 
         foreach (Tahapan::semua() as $tahap) {
             $aturan[$tahap->kolom] = ['nullable', 'date'];
-
-            if ($tahap->kolomStatus !== null) {
-                $aturan[$tahap->kolomStatus] = ['required', new Enum(StatusTahap::class)];
-            }
         }
 
         return $aturan;
@@ -70,25 +64,8 @@ class BidangRequest extends FormRequest
 
         foreach (Tahapan::semua() as $tahap) {
             $nama[$tahap->kolom] = 'tanggal '.mb_strtolower($tahap->label);
-
-            if ($tahap->kolomStatus !== null) {
-                $nama[$tahap->kolomStatus] = 'status tahap '.mb_strtolower($tahap->label);
-            }
         }
 
         return $nama;
-    }
-
-    /**
-     * Tahap kondisional yang statusnya tidak dikirim (mis. input dinonaktifkan
-     * di peramban lawas) dianggap tetap berlaku.
-     */
-    protected function prepareForValidation(): void
-    {
-        foreach (Tahapan::kolomStatus() as $kolom) {
-            if (! $this->has($kolom)) {
-                $this->merge([$kolom => StatusTahap::Berlaku->value]);
-            }
-        }
     }
 }

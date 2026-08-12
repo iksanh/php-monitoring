@@ -33,10 +33,10 @@
 
             <x-pm.input label="Tahun target" name="tahun_target" type="number" min="2000" max="2100"
                         :value="$bidang->tahun_target ?? now()->year" wajib />
-
-            <x-pm.select label="Status" name="status" :value="$bidang->status?->value"
-                         :pilihan="\App\Enums\StatusBidang::pilihan()" wajib />
         </div>
+
+        {{-- Tidak ada isian status: nilainya dihitung dari tanggal tahap dan
+             kendala aktif — lihat docs/spec.md bagian 3. --}}
 
         <div class="mt-4">
             <x-pm.textarea label="Keterangan" name="keterangan" :value="$bidang->keterangan" />
@@ -51,30 +51,12 @@
 
         <div class="mt-4 space-y-4">
             @foreach ($tahapan as $tahap)
-                @php
-                    $statusSekarang = $tahap->kolomStatus
-                        ? old($tahap->kolomStatus, $bidang->{$tahap->kolomStatus}?->value ?? \App\Enums\StatusTahap::Berlaku->value)
-                        : null;
-                    $dinonaktifkan = $statusSekarang === \App\Enums\StatusTahap::TidakBerlaku->value;
-                @endphp
-
                 <div class="grid gap-4 border-t border-zinc-100 pt-4 sm:grid-cols-2 sm:items-start">
                     <x-pm.input :label="$tahap->urutan.'. '.$tahap->label"
                                 :name="$tahap->kolom"
                                 type="date"
                                 :value="\App\Support\Tanggal::input($bidang->{$tahap->kolom})"
-                                :bantu="$tahap->unit.' · '.$tahap->dokumen"
-                                :disabled="$dinonaktifkan"
-                                data-tanggal-tahap="{{ $tahap->kolom }}" />
-
-                    @if ($tahap->kolomStatus)
-                        <x-pm.select label="Berlaku untuk bidang ini?"
-                                     :name="$tahap->kolomStatus"
-                                     :value="$statusSekarang"
-                                     :pilihan="\App\Enums\StatusTahap::pilihan()"
-                                     bantu="Tahap kondisional. Bila tidak berlaku, tahap ini tidak dihitung."
-                                     data-status-tahap="{{ $tahap->kolom }}" />
-                    @endif
+                                :bantu="$tahap->unit.' · '.$tahap->dokumen" />
                 </div>
             @endforeach
         </div>
@@ -90,19 +72,3 @@
         </a>
     </div>
 </form>
-
-<script>
-    // Tahap kondisional yang dinyatakan tidak berlaku: input tanggalnya dimatikan.
-    document.querySelectorAll('[data-status-tahap]').forEach(function (pilihan) {
-        var kolom = pilihan.dataset.statusTahap;
-        var tanggal = document.querySelector('[data-tanggal-tahap="' + kolom + '"]');
-
-        if (! tanggal) {
-            return;
-        }
-
-        pilihan.addEventListener('change', function () {
-            tanggal.disabled = pilihan.value === @json(\App\Enums\StatusTahap::TidakBerlaku->value);
-        });
-    });
-</script>

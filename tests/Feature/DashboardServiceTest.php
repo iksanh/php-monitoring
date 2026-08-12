@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
+use App\Enums\KategoriKendala;
 use App\Models\Bidang;
 use App\Models\Instansi;
+use App\Models\Kendala;
 use App\Services\DashboardService;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -109,33 +108,6 @@ class DashboardServiceTest extends TestCase
         $this->assertSame(0, $sebaran[$tahapan[1]->kolom]);
     }
 
-    public function test_tahap_tidak_berlaku_dilewati_dalam_sebaran(): void
-    {
-        $kondisional = $this->tahapKondisional();
-        $tahapan = Tahapan::semua();
-        $sebelum = $tahapan[$kondisional->urutan - 2];
-        $sesudah = $tahapan[$kondisional->urutan];
-
-        // Seluruh tahap sebelum tahap kondisional terisi, tahap kondisional
-        // dinyatakan tidak berlaku: yang ditunggu adalah tahap sesudahnya.
-        $atribut = [$kondisional->kolomStatus => StatusTahap::TidakBerlaku->value];
-
-        foreach ($tahapan as $tahap) {
-            if ($tahap->urutan > $sebelum->urutan) {
-                break;
-            }
-
-            $atribut[$tahap->kolom] = '2026-0'.$tahap->urutan.'-05';
-        }
-
-        Bidang::factory()->create($atribut);
-
-        $sebaran = $this->sebaranPerKolom();
-
-        $this->assertSame(1, $sebaran[$sesudah->kolom]);
-        $this->assertSame(0, $sebaran[$kondisional->kolom]);
-    }
-
     public function test_bidang_tuntas_tidak_dihitung_tertahan(): void
     {
         Bidang::factory()->tuntas()->create();
@@ -166,9 +138,17 @@ class DashboardServiceTest extends TestCase
         $tahun = (int) date('Y');
 
         Bidang::factory()->tahunTarget($tahun)->count(3)->create();
+
+        // Sertipikat terbit, aset belum diserahkan → selesai.
+        Bidang::factory()->tahunTarget($tahun)->sampaiTahap(Tahapan::jumlah() - 1)->create();
+
+        // Seluruh tahap terisi → sudah diserahkan.
         Bidang::factory()->tahunTarget($tahun)->tuntas()->create();
-        Bidang::factory()->tahunTarget($tahun)->tuntas()->status(StatusBidang::Diserahkan)->create();
-        Bidang::factory()->tahunTarget($tahun)->status(StatusBidang::Terkendala)->create();
+
+        // Punya kendala terbuka → terkendala, apa pun tanggalnya.
+        $terkendala = Bidang::factory()->tahunTarget($tahun)->create();
+        Kendala::factory()->create(['bidang_id' => $terkendala->id]);
+
         Bidang::factory()->tahunTarget($tahun - 1)->count(4)->create();
 
         $kartu = $this->dashboard->kartuAngka($tahun);
@@ -233,10 +213,48 @@ class DashboardServiceTest extends TestCase
         DB::enableQueryLog();
 
         $terlama = $this->dashboard->bidangTerlama();
-        $terlama->each(fn (Bidang $bidang) => $bidang->instansi->nama);
+        $terlama->each(function (Bidang $bidang): void {
+            $bidang->instansi->nama;
+            $bidang->kondisiTahap;
+            $bidang->adaKendalaAktif();
+        });
 
-        // Satu query bidang + satu query eager load instansi.
-        $this->assertCount(2, DB::getQueryLog());
+        // Satu query bidang + eager load instansi + eager load kendala aktif.
+        $this->assertCount(3, DB::getQueryLog());
+    }
+
+    public function test_terkendala_dikelompokkan_per_kategori(): void
+    {
+        $tahun = (int) date('Y');
+
+        $sengketa = Bidang::factory()->tahunTarget($tahun)->create();
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->create(['bidang_id' => $sengketa->id]);
+
+        // Dua kendala sekategori pada satu bidang tetap terhitung satu bidang.
+        $hutan = Bidang::factory()->tahunTarget($tahun)->create();
+        Kendala::factory()->count(2)->kategori(KategoriKendala::KawasanHutan)
+            ->create(['bidang_id' => $hutan->id]);
+
+        // Kendala yang sudah ditutup tidak dihitung.
+        $tutup = Bidang::factory()->tahunTarget($tahun)->create();
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->selesai()
+            ->create(['bidang_id' => $tutup->id]);
+
+        // Tahun target lain tidak ikut.
+        $tahunLalu = Bidang::factory()->tahunTarget($tahun - 1)->create();
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->create(['bidang_id' => $tahunLalu->id]);
+
+        $rincian = $this->dashboard->terkendalaPerKategori($tahun);
+
+        $this->assertSame(1, $rincian[KategoriKendala::Sengketa->value]);
+        $this->assertSame(1, $rincian[KategoriKendala::KawasanHutan->value]);
+        $this->assertSame(0, $rincian[KategoriKendala::BerkasKurang->value]);
+
+        // Seluruh kategori tetap muncul supaya rinciannya terbaca lengkap.
+        $this->assertSame(
+            array_column(KategoriKendala::cases(), 'value'),
+            array_keys($rincian)
+        );
     }
 
     public function test_penanda_data_basi(): void
@@ -261,7 +279,6 @@ class DashboardServiceTest extends TestCase
     private function bidangKasusKhusus(): void
     {
         $tahapan = Tahapan::semua();
-        $kondisional = $this->tahapKondisional();
 
         // Tanpa tanggal sama sekali.
         Bidang::factory()->create();
@@ -272,18 +289,9 @@ class DashboardServiceTest extends TestCase
             $tahapan[2]->kolom => '2026-03-05',
         ]);
 
-        // Tahap kondisional tidak berlaku, tahap sebelumnya sudah terisi.
+        // Hanya tahap terakhir yang terisi — urutan tidak dipaksakan.
         Bidang::factory()->create([
-            $kondisional->kolomStatus => StatusTahap::TidakBerlaku->value,
-            $tahapan[0]->kolom => '2026-01-05',
-        ]);
-
-        // Tahap kondisional tidak berlaku tetapi tanggalnya terlanjur terisi:
-        // tanggal itu harus diabaikan.
-        Bidang::factory()->create([
-            $kondisional->kolomStatus => StatusTahap::TidakBerlaku->value,
-            $kondisional->kolom => '2026-02-05',
-            $tahapan[0]->kolom => '2026-01-05',
+            $tahapan[Tahapan::jumlah() - 1]->kolom => '2026-04-05',
         ]);
 
         // Tuntas.
@@ -302,16 +310,5 @@ class DashboardServiceTest extends TestCase
         }
 
         return $hasil;
-    }
-
-    private function tahapKondisional(): Tahap
-    {
-        foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->kondisional()) {
-                return $tahap;
-            }
-        }
-
-        $this->markTestSkipped('config/tahapan.php tidak punya tahap kondisional.');
     }
 }

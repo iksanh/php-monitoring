@@ -24,32 +24,39 @@ Yang dibangun hanya: input data, simpan, tampilkan, agregasi, export.
 
 ## 2. TAHAPAN — acuan utama seluruh aplikasi
 
-Ada 8 tahap. Setiap tahap diwakili satu kolom tanggal di tabel `bidang`.
-Tanggal terisi berarti tahap selesai; kosong berarti belum.
+Ada 8 tahap, seluruhnya wajib. Tidak ada tahap kondisional. Setiap tahap
+diwakili satu kolom tanggal di tabel `bidang`. Tanggal terisi berarti tahap
+selesai; kosong berarti belum.
 
-| # | kolom            | label                 | unit          | penanggung_jawab | dokumen dasar            | sifat       |
-|---|------------------|-----------------------|---------------|------------------|--------------------------|-------------|
-| 1 | tgl_permohonan   | Permohonan            | Loket/PTSP    | kantah           | Tanda terima DI 301      | wajib       |
-| 2 | tgl_pengukuran   | Pengukuran            | Seksi Survei  | kantah           | Peta Bidang / Surat Ukur | wajib       |
-| 3 | tgl_pengumuman   | Pengumuman 30 Hari    | Seksi PHP     | kantah           | BA Pengesahan Pengumuman | kondisional |
-| 4 | tgl_pemeriksaan  | Pemeriksaan Tanah     | Tim Peneliti  | kantah           | BA Penelitian Tanah      | wajib       |
-| 5 | tgl_sk           | Penetapan SK          | Kepala Kantor | kantah           | SK Pemberian Hak Pakai   | wajib       |
-| 6 | tgl_kewajiban    | Pemenuhan Kewajiban   | Pemohon       | pemohon          | Bukti bayar / ket. nihil | kondisional |
-| 7 | tgl_sertipikat   | Penerbitan Sertipikat | Kepala Kantor | kantah           | Sertipikat elektronik    | wajib       |
-| 8 | tgl_serah_terima | Serah Terima & Aset   | Pemohon       | pemohon          | BA Serah Terima / KIB    | wajib       |
+| # | kolom            | label                 | label_menunggu            | unit                       | penanggung_jawab | dokumen dasar                 |
+|---|------------------|-----------------------|---------------------------|----------------------------|------------------|-------------------------------|
+| 1 | tgl_permohonan   | Permohonan            | Berkas Masuk              | Loket/PTSP                 | kantah           | Tanda terima berkas (DI 301)  |
+| 2 | tgl_pkkpr        | PKKPR                 | Daftar PKKPR              | Pemohon (OSS)              | pemohon          | Persetujuan KKPR              |
+| 3 | tgl_pengukuran   | Pengukuran            | Pengukuran                | Seksi Survei & Pemetaan    | kantah           | Peta Bidang Tanah / Surat Ukur|
+| 4 | tgl_peta_analisis| Peta Analisis         | Peta Analisis             | Seksi Survei & Pemetaan    | kantah           | Peta Analisis Bidang Tanah    |
+| 5 | tgl_panitia_a    | Pemeriksaan Panitia A | Menunggu Jadwal Panitia A | Panitia Pemeriksaan Tanah A| kantah           | Risalah Pemeriksaan Tanah     |
+| 6 | tgl_sk           | Penetapan SK          | Proses SK                 | Kepala Kantor              | kantah           | SK Pemberian Hak Pakai        |
+| 7 | tgl_sertipikat   | Penerbitan Sertipikat | Proses Sertipikat         | Kepala Kantor              | kantah           | Sertipikat elektronik         |
+| 8 | tgl_serah_terima | Serah Terima          | Siap Diserahkan           | Loket/PTSP                 | pemohon          | BA Serah Terima / KIB         |
 
-Tahap kondisional punya kolom pendamping `pengumuman_status` dan
-`kewajiban_status`, bernilai `berlaku` (default) atau `tidak_berlaku`. Bila
-`tidak_berlaku`, tahap itu dilewati dalam perhitungan tahap aktif, tidak
-dihitung sebagai bidang tertahan, dan tidak masuk penyebut persentase.
+Definisikan di `config/tahapan.php` sebagai array berurutan. Tiap elemen berisi
+key: `kolom`, `label`, `label_menunggu`, `unit`, `penanggung_jawab`, `dokumen`.
 
-Definisikan seluruhnya di `config/tahapan.php` sebagai array berurutan. Tiap
-elemen berisi key: `kolom`, `label`, `unit`, `penanggung_jawab`, `dokumen`,
-`sifat`, `kolom_status` (null untuk tahap wajib).
+**Dua jenis label, dua kegunaan.** `label` menyebut tahap dari sisi *apa yang
+sudah selesai*; `label_menunggu` menyebutnya dari sisi *apa yang sedang
+ditunggu*. Petugas kantor terbiasa dengan cara kedua ("Menunggu Jadwal Panitia
+A"), sedangkan struktur data memakai cara pertama. Aturan pemakaian ada di
+bagian 6.
+
+**PKKPR mendahului pengukuran.** Berkas yang masuk tanpa PKKPR dikembalikan ke
+pemohon untuk mendaftar PKKPR lebih dahulu. Kondisi itu tidak perlu ditandai
+khusus — cukup terbaca dari `tgl_permohonan` terisi sementara `tgl_pkkpr`
+kosong. Jangan catat sebagai kendala; kendala disediakan untuk hambatan di luar
+alur normal.
 
 Seluruh bagian aplikasi — form input, timeline detail, label grafik, header
-tabel, header export — membaca dari config ini. Ini persyaratan keras: nama
-tahap kemungkinan akan diubah pimpinan, dan perubahan itu harus cukup di satu
+tabel, header export — membaca dari config ini. Ini persyaratan keras: nama dan
+urutan tahap kemungkinan masih berubah, dan perubahan itu harus cukup di satu
 file.
 
 ## 3. Skema database
@@ -82,32 +89,24 @@ bidang
   tahun_target        year
   keterangan          text, nullable
   tgl_permohonan      date, nullable
+  tgl_pkkpr           date, nullable
   tgl_pengukuran      date, nullable
-  tgl_pengumuman      date, nullable
-  tgl_pemeriksaan     date, nullable
+  tgl_peta_analisis   date, nullable
+  tgl_panitia_a       date, nullable
   tgl_sk              date, nullable
-  tgl_kewajiban       date, nullable
   tgl_sertipikat      date, nullable
   tgl_serah_terima    date, nullable
-  pengumuman_status   enum(berlaku, tidak_berlaku) default berlaku
-  kewajiban_status    enum(berlaku, tidak_berlaku) default berlaku
   status              enum(proses, selesai, diserahkan, terkendala) default proses
   timestamps
   softDeletes
   index: instansi_id, tahun_target, status
 
-Arti nilai `status` — diisi manual oleh operator, bukan turunan tanggal:
-
-| nilai      | arti                                                      |
-|------------|-----------------------------------------------------------|
-| proses     | berkas masih berjalan                                     |
-| selesai    | sertipikat sudah terbit, aset belum diserahkan            |
-| diserahkan | aset sudah diserahkan ke instansi pemilik (berkas tuntas) |
-| terkendala | ditandai bermasalah, perlu perhatian                      |
-
 kendala
   id
   bidang_id           FK bidang
+  kategori            enum(berkas_kurang, menunggu_pemohon, sengketa,
+                           overlap_bidang, kawasan_hutan, lainnya)
+                      default berkas_kurang
   uraian              text
   tanggal_catat       date
   tanggal_selesai     date, nullable
@@ -120,21 +119,40 @@ users
   role                enum(admin, operator, viewer)
 ```
 
+**Kolom `status` tidak diisi operator.** Nilainya dihitung otomatis dari
+tanggal tahap dan kendala aktif, lewat observer saat bidang atau kendala
+disimpan. Field status dihapus dari form input.
+
+| nilai      | syarat                                                    |
+|------------|-----------------------------------------------------------|
+| terkendala | ada minimal satu kendala dengan `tanggal_selesai` kosong  |
+| diserahkan | `tgl_serah_terima` terisi                                 |
+| selesai    | `tgl_sertipikat` terisi, `tgl_serah_terima` belum         |
+| proses     | selain itu                                                |
+
+Urutan pemeriksaan sesuai tabel di atas — `terkendala` menang atas yang lain.
+
+**Berkas tidak lengkap dicatat sebagai kendala, bukan sebagai tahap.** Kekurangan
+berkas bisa muncul di tahap mana pun, jadi memodelkannya sebagai tahap berarti
+menyisipkannya di banyak posisi. Bidang tetap menempel di tahap terakhirnya dan
+ditandai punya kendala aktif. Kendala ditutup dengan mengisi `tanggal_selesai`,
+bukan dengan menghapus baris, agar riwayatnya tersimpan.
+
 ## 4. Logika turunan (accessor pada model `Bidang`)
 
-- `tahapBerlaku()` — daftar tahap dari config; tahap kondisional yang statusnya
-  `tidak_berlaku` dikeluarkan
-- `tahapAktif` — tahap berlaku terakhir yang tanggalnya terisi; null bila belum
-  ada satu pun
-- `tahapBerikut` — tahap berlaku setelah `tahapAktif`; null bila sudah tuntas
+- `tahapBerlaku()` — mengembalikan `config('tahapan')` apa adanya
+- `tahapAktif` — tahap terakhir yang tanggalnya terisi; null bila belum ada
+- `tahapBerikut` — tahap setelah `tahapAktif`; null bila seluruh tahap terisi
 - `penanggungJawab` — nilai `penanggung_jawab` dari `tahapBerikut`
 - `umurHari` — selisih `tgl_permohonan` sampai `tgl_sertipikat`; bila sertipikat
   belum terbit, sampai hari ini; null bila `tgl_permohonan` kosong
-- `persenProgres` — jumlah tanggal terisi dibagi jumlah tahap berlaku × 100
+- `persenProgres` — jumlah tanggal terisi dibagi 8 × 100
+- `statusHitung` — nilai status sesuai tabel di bagian 3
+- `kendalaAktif` — relasi kendala dengan `tanggal_selesai` kosong
 
-Tulis unit test yang mencakup: bidang kosong, bidang dengan tahap kondisional
-`tidak_berlaku`, bidang tuntas, dan bidang dengan tanggal terisi tidak berurutan
-(operator melewati satu tahap).
+Unit test wajib mencakup: bidang kosong, bidang tuntas, bidang dengan tanggal
+terisi tidak berurutan (operator melewati satu tahap), dan `statusHitung` untuk
+keempat nilainya.
 
 ## 5. Hak akses
 
@@ -148,16 +166,33 @@ Gunakan Gate/Policy bawaan Laravel dan middleware `role:` buatan sendiri.
 
 ## 6. Halaman
 
+### Aturan pemakaian label
+
+`label_menunggu` dipakai di mana pun aplikasi menyebut kondisi berjalan sebuah
+bidang: kolom tahap pada daftar bidang, tabel bidang terlama di dashboard, dan
+label sumbu grafik bidang tertahan per tahap.
+
+`label` dipakai di: timeline halaman detail, label input pada form, dan header
+kolom export.
+
+Bidang yang seluruh tahapnya terisi ditampilkan sebagai **"Sudah Diserahkan"**.
+
+Bidang dengan kendala aktif diberi badge peringatan di samping label tahapnya,
+berisi kategori kendala — contoh: *Menunggu Jadwal Panitia A — berkas kurang*.
+
 ### Dashboard (halaman utama — ini yang dilihat pimpinan)
 
 - kartu angka: total bidang target tahun berjalan, sudah bersertipikat, sudah
   diserahkan, dalam proses, terkendala
 - progress bar capaian terhadap target tahun berjalan
-- grafik batang: jumlah bidang tertahan di tiap tahap, label sumbu dari config
+- grafik batang: jumlah bidang tertahan di tiap tahap, label sumbu dari
+  `label_menunggu`
 - grafik donat: bidang tertahan menurut pihak penanggung jawab (Kantor
   Pertanahan vs Pemohon), dihitung dari `penanggung_jawab` tahap berikutnya.
   Ini penting: tanpa pemisahan ini, Kantah selalu terlihat sebagai penyebab
-  keterlambatan padahal sebagian bola ada di Pemda.
+  keterlambatan padahal sebagian bola ada di pemohon — terutama di tahap PKKPR
+  yang bisa menggantung berbulan-bulan di OSS.
+- rincian bidang terkendala menurut kategori kendala
 - grafik batang: capaian per instansi pemilik aset
 - tabel: 10 bidang terlama belum selesai — kolom nama aset, instansi, tahap
   aktif, tahap berikut, penanggung jawab, umur hari
@@ -166,24 +201,24 @@ Gunakan Gate/Policy bawaan Laravel dan middleware `role:` buatan sendiri.
 
 ### Daftar bidang
 
-Tabel dengan filter: instansi, tahap aktif, penanggung jawab, status, tahun
-target. Pencarian nama aset dan nomor urut. Pagination server-side 25 per
-halaman. Kolom: nomor urut, nama aset, instansi, desa/kecamatan, luas, tahap
-aktif, penanggung jawab, umur hari, status. Filter tersimpan di query string.
+Tabel dengan filter: instansi, tahap aktif, penanggung jawab, status, kategori
+kendala, tahun target. Pencarian nama aset dan nomor urut. Pagination
+server-side 25 per halaman. Kolom: nomor urut, nama aset, instansi,
+desa/kecamatan, luas, tahap aktif, penanggung jawab, umur hari, status. Filter
+tersimpan di query string.
 
 ### Detail bidang
 
 Identitas aset lengkap, lalu timeline vertikal 8 tahap. Tiap tahap menampilkan
 label, unit pelaksana, dokumen dasar, dan tanggal. Tahap belum selesai
-ditampilkan redup; tahap `tidak_berlaku` ditampilkan dicoret dengan keterangan
-"tidak berlaku untuk bidang ini". Di bawahnya daftar kendala.
+ditampilkan redup. Di bawahnya daftar kendala beserta kategori, uraian, tanggal
+catat, dan tanggal selesai.
 
 ### Form tambah/edit bidang
 
 Satu halaman. Bagian tanggal tahap di-render dengan loop atas
 `config('tahapan')`; tiap input diberi teks bantu berisi unit pelaksana dan
-dokumen dasar. Tahap kondisional diberi toggle berlaku/tidak berlaku yang
-menonaktifkan input tanggalnya.
+dokumen dasar. Tidak ada field status — nilainya dihitung otomatis.
 
 ### Master instansi, jenis instansi, dan manajemen pengguna
 
@@ -204,18 +239,21 @@ menambah jenis baru (mis. BUMD, kementerian) dan mengubah namanya. Ketentuan:
 
 ### Export Excel
 
-Daftar bidang sesuai filter aktif. Kolom tanggal tahap mengikuti urutan config.
+Daftar bidang sesuai filter aktif. Kolom tanggal tahap mengikuti urutan config,
+memakai `label` sebagai header.
 
 ## 7. Ketentuan teknis
 
 - Seeder: 3 instansi contoh, 4 pengguna (dua admin, satu operator, satu viewer),
-  dan minimal 40 bidang dengan sebaran realistis — sebagian tuntas, sebagian
-  mandek lama di tahap berbeda, beberapa dengan tahap kondisional
-  `tidak_berlaku`, beberapa berkendala aktif. Dashboard harus langsung bermakna
+  dan minimal 40 bidang. Sebaran meniru kondisi riil kantor: 2 menunggu PKKPR,
+  2 menunggu pengukuran, 6 menunggu peta analisis, 7 menunggu Panitia A,
+  5 siap diserahkan, 6 sudah diserahkan, sisanya acak. Beberapa bidang diberi
+  kendala aktif dengan kategori bervariasi. Dashboard harus langsung bermakna
   setelah `db:seed`.
 - Sebaran per tahap dihitung dengan satu query agregasi `SUM(CASE WHEN ...)`
-  atas kedelapan kolom tanggal.
-- Hindari N+1 pada halaman daftar dan dashboard. Eager load relasi instansi.
+  atas kedelapan kolom tanggal, bukan delapan query terpisah.
+- Hindari N+1 pada halaman daftar dan dashboard. Eager load relasi instansi dan
+  kendala aktif.
 - Semua query dashboard di dalam `DashboardService`.
 - Format tanggal tampilan `d M Y` dengan nama bulan Indonesia. Sediakan helper.
 - Locale aplikasi `id`.

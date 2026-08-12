@@ -41,7 +41,7 @@
                     'Nomor berkas KKP' => $bidang->nomor_berkas_kkp ?: '—',
                     'Tahun target' => $bidang->tahun_target,
                     'Tahap aktif' => $bidang->tahapAktif?->label ?? 'Belum mulai',
-                    'Tahap berikut' => $bidang->tahapBerikut?->label ?? 'Tuntas',
+                    'Sedang menunggu' => $bidang->kondisiTahap,
                     'Penanggung jawab' => $bidang->penanggungJawab?->label() ?? '—',
                     'Umur berkas' => $bidang->umurHari !== null ? $bidang->umurHari.' hari' : '—',
                     'Progres' => $bidang->persenProgres.'%',
@@ -64,26 +64,22 @@
             <ol class="mt-4 space-y-1">
                 @foreach ($tahapan as $tahap)
                     @php
-                        $berlaku = $bidang->tahapDipakai($tahap);
                         $tanggal = $bidang->tanggalTahap($tahap);
-                        $selesai = $berlaku && $tanggal !== null;
+                        $selesai = $tanggal !== null;
                     @endphp
 
                     <li class="flex gap-4 border-l-2 pl-4 pb-4 {{ $selesai ? 'border-emerald-400' : 'border-zinc-200' }}">
                         <div class="flex-1">
-                            <p class="text-sm font-medium {{ $berlaku ? ($selesai ? 'text-zinc-900' : 'text-zinc-400') : 'text-zinc-400 line-through' }}">
+                            <p class="text-sm font-medium {{ $selesai ? 'text-zinc-900' : 'text-zinc-400' }}">
                                 {{ $tahap->urutan }}. {{ $tahap->label }}
                             </p>
-                            <p class="text-xs {{ $berlaku ? 'text-zinc-500' : 'text-zinc-400' }}">
+                            <p class="text-xs text-zinc-500">
                                 {{ $tahap->unit }} · {{ $tahap->dokumen }}
                             </p>
-                            @unless ($berlaku)
-                                <p class="text-xs italic text-zinc-400">tidak berlaku untuk bidang ini</p>
-                            @endunless
                         </div>
 
                         <div class="text-right text-sm {{ $selesai ? 'font-medium text-zinc-900' : 'text-zinc-400' }}">
-                            {{ $berlaku ? \App\Support\Tanggal::pendek($tanggal) : '—' }}
+                            {{ \App\Support\Tanggal::pendek($tanggal) }}
                         </div>
                     </li>
                 @endforeach
@@ -98,7 +94,10 @@
             @forelse ($bidang->kendala as $kendala)
                 <li class="flex flex-wrap items-start justify-between gap-3 py-3">
                     <div class="max-w-2xl">
-                        <p class="text-sm">{{ $kendala->uraian }}</p>
+                        <p class="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                            {{ $kendala->kategori->label() }}
+                        </p>
+                        <p class="mt-0.5 text-sm">{{ $kendala->uraian }}</p>
                         <p class="mt-1 text-xs text-zinc-500">
                             Dicatat {{ \App\Support\Tanggal::pendek($kendala->tanggal_catat) }} oleh {{ $kendala->dicatat_oleh }}
                             @if ($kendala->selesai())
@@ -129,6 +128,10 @@
         @can('create', \App\Models\Kendala::class)
             <form method="POST" action="{{ route('kendala.store', $bidang) }}" class="mt-5 grid gap-4 border-t border-zinc-100 pt-5 sm:grid-cols-2">
                 @csrf
+                <div class="sm:col-span-2">
+                    <x-pm.select label="Kategori kendala" name="kategori"
+                                 :pilihan="\App\Enums\KategoriKendala::pilihan()" wajib />
+                </div>
                 <div class="sm:col-span-2">
                     <x-pm.textarea label="Uraian kendala" name="uraian" wajib />
                 </div>

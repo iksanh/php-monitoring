@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\KategoriKendala;
+use App\Observers\KendalaObserver;
 use Database\Factories\KendalaFactory;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,6 +17,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $bidang_id
+ * @property KategoriKendala $kategori
  * @property string $uraian
  * @property Carbon $tanggal_catat
  * @property Carbon|null $tanggal_selesai
@@ -22,6 +26,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  * @property-read Bidang $bidang
  */
+#[ObservedBy(KendalaObserver::class)]
 class Kendala extends Model
 {
     /** @use HasFactory<KendalaFactory> */
@@ -31,6 +36,7 @@ class Kendala extends Model
 
     protected $fillable = [
         'bidang_id',
+        'kategori',
         'uraian',
         'tanggal_catat',
         'tanggal_selesai',
@@ -67,6 +73,7 @@ class Kendala extends Model
     protected function casts(): array
     {
         return [
+            'kategori' => KategoriKendala::class,
             'tanggal_catat' => 'date',
             'tanggal_selesai' => 'date',
         ];

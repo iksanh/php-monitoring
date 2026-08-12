@@ -4,11 +4,10 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Enums\StatusBidang;
+use App\Enums\KategoriKendala;
 use App\Models\Bidang;
 use App\Models\Instansi;
 use App\Models\Kendala;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
@@ -16,12 +15,34 @@ use Illuminate\Database\Seeder;
 use RuntimeException;
 
 /**
- * Sebaran contoh yang dibuat supaya dashboard langsung bermakna sesudah
- * `db:seed`: ada yang tuntas, ada yang mandek lama di tahap berbeda, ada yang
- * tahap kondisionalnya tidak berlaku, ada yang berkendala aktif.
+ * Sebaran contoh yang meniru kondisi riil kantor (docs/spec.md bagian 7),
+ * supaya dashboard langsung bermakna sesudah `db:seed`.
+ *
+ * Sebaran ditulis sebagai JUMLAH TAHAP TERISI, bukan nama tahap: nama dan
+ * urutan tahap dibaca dari config('tahapan') dan masih mungkin berubah.
+ * Bidang dengan n tahap terisi berarti sedang menunggu tahap ke-(n+1).
  */
 class BidangSeeder extends Seeder
 {
+    /**
+     * tahap terisi => jumlah bidang. Dengan config saat spec ditulis:
+     * 1 = menunggu PKKPR, 2 = menunggu pengukuran, 3 = menunggu peta analisis,
+     * 4 = menunggu Panitia A, 7 = siap diserahkan, 8 = sudah diserahkan.
+     */
+    private const SEBARAN = [
+        1 => 2,
+        2 => 2,
+        3 => 6,
+        4 => 7,
+        7 => 5,
+        8 => 6,
+    ];
+
+    /**
+     * Sisanya acak, supaya jumlah bidang lewat dari 40.
+     */
+    private const ACAK = 14;
+
     public function run(): void
     {
         /** @var Collection<int, Instansi> $instansi */
@@ -45,101 +66,66 @@ class BidangSeeder extends Seeder
         $jumlahTahap = Tahapan::jumlah();
         $tahunIni = (int) date('Y');
 
-        // 12 bidang tuntas sampai serah terima. Sebagian ditargetkan tahun
-        // berjalan supaya progress bar capaian tahun ini ada isinya, sisanya
-        // capaian tahun-tahun lalu.
-        for ($i = 0; $i < 12; $i++) {
-            $mulai = $this->mulai($jumlahTahap, 60, 420);
+        foreach (self::SEBARAN as $terisi => $jumlah) {
+            for ($i = 0; $i < $jumlah; $i++) {
+                // Yang mandek di tahap awal sengaja dibuat tua: itulah berkas
+                // yang paling perlu terlihat di dashboard.
+                $umur = $terisi <= 4 ? [200, 600] : [30, 200];
+                $mulai = $this->mulai($terisi, $umur[0], $umur[1]);
 
-            Bidang::factory()
-                ->tuntas($mulai)
-                ->status(StatusBidang::Diserahkan)
-                ->tahunTarget($i < 7 ? $tahunIni : $mulai->year)
-                ->create(['instansi_id' => $this->instansi($instansi)]);
-        }
+                // Sebagian berkas lama ditarget ulang ke tahun berjalan,
+                // sebagian tetap tercatat sebagai capaian tahun lampau.
+                $tahun = $terisi === $jumlahTahap && $i >= 4 ? $mulai->year : $tahunIni;
 
-        // 5 bidang yang sertipikatnya sudah terbit tetapi asetnya belum
-        // diserahkan — inilah beda "selesai" dan "sudah diserahkan".
-        for ($i = 0; $i < 5; $i++) {
-            $mulai = $this->mulai($jumlahTahap - 1, 30, 180);
-
-            Bidang::factory()
-                ->sampaiTahap($jumlahTahap - 1, $mulai)
-                ->status(StatusBidang::Selesai)
-                ->tahunTarget($tahunIni)
-                ->create(['instansi_id' => $this->instansi($instansi)]);
-        }
-
-        // 10 bidang mandek lama di tahap yang berbeda-beda. Separuhnya berkas
-        // tahun lalu yang ditarget ulang ke tahun berjalan.
-        for ($i = 0; $i < 10; $i++) {
-            $tahap = ($i % 5) + 1;
-            $mulai = $this->mulai($tahap, 400, 800);
-
-            Bidang::factory()
-                ->sampaiTahap($tahap, $mulai)
-                ->tahunTarget($i % 2 === 0 ? $tahunIni : $mulai->year)
-                ->create(['instansi_id' => $this->instansi($instansi)]);
-        }
-
-        // 14 bidang berjalan normal dengan target tahun ini.
-        for ($i = 0; $i < 14; $i++) {
-            $tahap = random_int(1, $jumlahTahap - 1);
-            $mulai = $this->mulai($tahap, 15, 90);
-
-            Bidang::factory()
-                ->sampaiTahap($tahap, $mulai)
-                ->tahunTarget($tahunIni)
-                ->create(['instansi_id' => $this->instansi($instansi)]);
-        }
-
-        // 5 bidang target tahun ini yang berkasnya belum dimasukkan sama sekali.
-        for ($i = 0; $i < 5; $i++) {
-            Bidang::factory()
-                ->tahunTarget($tahunIni)
-                ->create(['instansi_id' => $this->instansi($instansi)]);
-        }
-
-        // 6 bidang dengan tahap kondisional yang tidak berlaku.
-        foreach ($this->tahapKondisional() as $tahap) {
-            for ($i = 0; $i < 3; $i++) {
-                $sampai = $i === 0 ? $jumlahTahap : random_int(2, $jumlahTahap - 2);
-                $mulai = $this->mulai($sampai, 30, 200);
-
-                $factory = Bidang::factory()
-                    ->tanpaTahap($tahap->kolom)
-                    ->sampaiTahap($sampai, $mulai)
-                    ->tahunTarget($i === 2 ? $mulai->year : $tahunIni);
-
-                if ($i === 0) {
-                    // Seluruh tahap berlaku terisi, termasuk serah terima.
-                    $factory = $factory->status(StatusBidang::Diserahkan);
-                }
-
-                $factory->create(['instansi_id' => $this->instansi($instansi)]);
+                Bidang::factory()
+                    ->sampaiTahap($terisi, $mulai)
+                    ->tahunTarget($tahun)
+                    ->create(['instansi_id' => $this->instansi($instansi)]);
             }
         }
 
-        // 6 bidang berkendala aktif — inilah yang mengisi kartu "terkendala".
-        for ($i = 0; $i < 6; $i++) {
-            $tahap = random_int(1, 5);
-            $mulai = $this->mulai($tahap, 200, 500);
+        for ($i = 0; $i < self::ACAK; $i++) {
+            // Termasuk beberapa yang berkasnya belum masuk sama sekali.
+            $terisi = random_int(0, $jumlahTahap - 1);
+            $mulai = $this->mulai(max($terisi, 1), 15, 120);
 
-            $bidang = Bidang::factory()
-                ->sampaiTahap($tahap, $mulai)
+            Bidang::factory()
+                ->sampaiTahap($terisi, $mulai)
                 ->tahunTarget($tahunIni)
-                ->status(StatusBidang::Terkendala)
                 ->create(['instansi_id' => $this->instansi($instansi)]);
-
-            Kendala::factory()->create([
-                'bidang_id' => $bidang->id,
-                'tanggal_catat' => $mulai->addDays(random_int(30, 120)),
-            ]);
         }
 
-        // Beberapa kendala yang sudah ditutup, supaya riwayat tidak kosong.
+        $this->kendala();
+    }
+
+    /**
+     * Kendala aktif dengan kategori bervariasi, plus beberapa yang sudah
+     * ditutup supaya riwayatnya tidak kosong.
+     *
+     * Status bidang tidak disetel di sini — BidangObserver yang menjadikannya
+     * `terkendala` begitu kendala aktif tersimpan.
+     */
+    private function kendala(): void
+    {
+        $belumSelesai = Bidang::query()
+            ->whereNull(Bidang::KOLOM_SERAH_TERIMA)
+            ->inRandomOrder()
+            ->limit(count(KategoriKendala::cases()) + 4)
+            ->get();
+
+        $kategori = KategoriKendala::cases();
+
+        foreach ($belumSelesai as $urutan => $bidang) {
+            Kendala::factory()
+                ->kategori($kategori[$urutan % count($kategori)])
+                ->create([
+                    'bidang_id' => $bidang->id,
+                    'tanggal_catat' => CarbonImmutable::now()->subDays(random_int(20, 240)),
+                ]);
+        }
+
         Bidang::query()
-            ->where('status', StatusBidang::Proses)
+            ->whereDoesntHave('kendala')
             ->inRandomOrder()
             ->limit(5)
             ->get()
@@ -170,16 +156,5 @@ class BidangSeeder extends Seeder
             : $urutan->random();
 
         return (int) $pilihan?->id;
-    }
-
-    /**
-     * @return list<Tahap>
-     */
-    private function tahapKondisional(): array
-    {
-        return array_values(array_filter(
-            Tahapan::semua(),
-            fn (Tahap $tahap): bool => $tahap->kondisional(),
-        ));
     }
 }

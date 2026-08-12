@@ -52,24 +52,6 @@ final class Tahapan
         return array_map(static fn (Tahap $tahap): string => $tahap->kolom, self::semua());
     }
 
-    /**
-     * Kolom status pendamping milik tahap kondisional.
-     *
-     * @return list<string>
-     */
-    public static function kolomStatus(): array
-    {
-        $kolom = [];
-
-        foreach (self::semua() as $tahap) {
-            if ($tahap->kolomStatus !== null) {
-                $kolom[] = $tahap->kolomStatus;
-            }
-        }
-
-        return $kolom;
-    }
-
     public static function cari(string $kolom): ?Tahap
     {
         foreach (self::semua() as $tahap) {

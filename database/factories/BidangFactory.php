@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace Database\Factories;
 
-use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
 use App\Models\Bidang;
 use App\Models\Instansi;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -27,6 +24,9 @@ class BidangFactory extends Factory
     private static int $urut = 0;
 
     /**
+     * Status sengaja tidak diisi di sini: nilainya turunan tanggal tahap dan
+     * kendala aktif, ditulis BidangObserver saat model disimpan.
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
@@ -57,26 +57,18 @@ class BidangFactory extends Factory
                 : null,
             'tahun_target' => $tahunTarget,
             'keterangan' => null,
-            'status' => StatusBidang::Proses,
         ];
 
-        // Semua tahap mulai kosong dan berlaku; state di bawah yang mengisinya.
-        foreach (Tahapan::semua() as $tahap) {
-            $atribut[$tahap->kolom] = null;
-
-            if ($tahap->kolomStatus !== null) {
-                $atribut[$tahap->kolomStatus] = StatusTahap::Berlaku;
-            }
+        // Semua tahap mulai kosong; state di bawah yang mengisinya.
+        foreach (Tahapan::kolomTanggal() as $kolom) {
+            $atribut[$kolom] = null;
         }
 
         return $atribut;
     }
 
     /**
-     * Isi tanggal untuk sejumlah tahap berlaku pertama, berjarak realistis.
-     *
-     * Tahap yang dinyatakan tidak berlaku otomatis dilewati, jadi state ini
-     * harus dipasang SESUDAH state tanpaTahap().
+     * Isi tanggal untuk sejumlah tahap pertama, berjarak realistis.
      */
     public function sampaiTahap(int $jumlah, ?CarbonInterface $mulai = null): static
     {
@@ -87,7 +79,7 @@ class BidangFactory extends Factory
 
             $nilai = [];
 
-            foreach (array_slice($this->tahapBerlaku($attributes), 0, max($jumlah, 0)) as $tahap) {
+            foreach (array_slice(Tahapan::semua(), 0, max($jumlah, 0)) as $tahap) {
                 $tanggal = $tanggal->addDays(fake()->numberBetween(7, 45));
                 $nilai[$tahap->kolom] = $tanggal;
             }
@@ -97,69 +89,16 @@ class BidangFactory extends Factory
     }
 
     /**
-     * Seluruh tahap berlaku terisi dan bidang ditandai selesai.
+     * Seluruh tahap terisi sampai serah terima.
      */
     public function tuntas(?CarbonInterface $mulai = null): static
     {
-        return $this->sampaiTahap(Tahapan::jumlah(), $mulai)
-            ->state(fn (): array => ['status' => StatusBidang::Selesai]);
-    }
-
-    /**
-     * Nyatakan satu tahap kondisional tidak berlaku untuk bidang ini.
-     *
-     * @param  string  $kolom  kolom tanggal tahapnya, mis. dari config('tahapan')
-     */
-    public function tanpaTahap(string $kolom): static
-    {
-        $tahap = Tahapan::cari($kolom);
-
-        if ($tahap === null || $tahap->kolomStatus === null) {
-            throw new \InvalidArgumentException(
-                "Tahap [{$kolom}] tidak ada di config('tahapan') atau bukan tahap kondisional."
-            );
-        }
-
-        return $this->state(fn (): array => [
-            $tahap->kolomStatus => StatusTahap::TidakBerlaku,
-            $tahap->kolom => null,
-        ]);
-    }
-
-    public function status(StatusBidang $status): static
-    {
-        return $this->state(fn (): array => ['status' => $status]);
+        return $this->sampaiTahap(Tahapan::jumlah(), $mulai);
     }
 
     public function tahunTarget(int $tahun): static
     {
         return $this->state(fn (): array => ['tahun_target' => $tahun]);
-    }
-
-    /**
-     * Tahap berlaku menurut atribut yang sudah terbentuk sejauh ini.
-     *
-     * @param  array<string, mixed>  $attributes
-     * @return list<Tahap>
-     */
-    private function tahapBerlaku(array $attributes): array
-    {
-        return array_values(array_filter(
-            Tahapan::semua(),
-            function (Tahap $tahap) use ($attributes): bool {
-                if ($tahap->kolomStatus === null) {
-                    return true;
-                }
-
-                $status = $attributes[$tahap->kolomStatus] ?? StatusTahap::Berlaku;
-
-                if ($status instanceof StatusTahap) {
-                    return $status->berlaku();
-                }
-
-                return $status !== StatusTahap::TidakBerlaku->value;
-            },
-        ));
     }
 
     /**

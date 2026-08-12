@@ -14,8 +14,18 @@ tugas apa pun yang menyentuh domain, skema, atau halaman.
 
 ## Aturan keras
 
-- Nama, urutan, unit, dan sifat tahap SELALU dibaca dari `config('tahapan')`.
-  Nol hardcode nama tahap di Blade, controller, service, atau migrasi.
+- Nama, urutan, unit, dan kedua label tahap SELALU dibaca dari
+  `config('tahapan')`. Nol hardcode nama tahap di Blade, controller, service,
+  atau migrasi. Seluruh tahap wajib — tidak ada lagi tahap kondisional.
+- Tiap tahap punya dua label. `label` menyebut tahap yang sudah selesai
+  (timeline detail, label input form, header export); `label_menunggu`
+  menyebut kondisi berjalan (kolom tahap daftar bidang, tabel bidang terlama,
+  label sumbu grafik). Aturan lengkapnya di `docs/spec.md` bagian 6.
+- Kolom `status` pada bidang adalah nilai turunan, bukan isian operator.
+  Satu-satunya penulisnya `App\Observers\BidangObserver`; jangan
+  mengembalikannya ke form, ke `$fillable`, atau ke FormRequest. Karena itu
+  `DatabaseSeeder` tidak boleh memakai trait `WithoutModelEvents` — event
+  model mati berarti seluruh data contoh berstatus `proses`.
 - Query agregasi dashboard ditulis di `DashboardService`, bukan di controller.
 - Sebaran bidang per tahap dihitung dengan SATU query `SUM(CASE WHEN ...)`,
   bukan delapan query terpisah.

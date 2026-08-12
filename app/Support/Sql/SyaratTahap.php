@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Support\Sql;
 
-use App\Enums\StatusTahap;
 use App\Support\Tahap;
 use App\Support\Tahapan;
 use InvalidArgumentException;
@@ -13,9 +12,9 @@ use InvalidArgumentException;
  * Perakit syarat SQL untuk tahap turunan.
  *
  * Tahap aktif dan tahap berikut tidak pernah disimpan sebagai kolom — keduanya
- * diturunkan dari kedelapan kolom tanggal beserta status tahap kondisional.
- * Kelas ini menerjemahkan turunan itu ke SQL supaya dashboard bisa mengagregasi
- * dan daftar bidang bisa menyaring tanpa menarik seluruh tabel ke PHP.
+ * diturunkan dari kedelapan kolom tanggal. Kelas ini menerjemahkan turunan itu
+ * ke SQL supaya dashboard bisa mengagregasi dan daftar bidang bisa menyaring
+ * tanpa menarik seluruh tabel ke PHP.
  *
  * Kebenarannya dijaga test yang mengadu hasil SQL dengan accessor pada model.
  */
@@ -25,13 +24,11 @@ final class SyaratTahap
      * Bidang sedang menunggu tahap ini, yakni `tahapBerikut` bidang tersebut
      * adalah tahap ini:
      *
-     *  a. tahap ini berlaku untuk bidang tersebut,
-     *  b. tanggalnya belum terisi,
-     *  c. tidak ada tahap berlaku sesudahnya yang sudah terisi, dan
-     *  d. tahap berlaku tepat sebelumnya sudah terisi — atau tidak ada tahap
-     *     berlaku sebelum ini sama sekali.
+     *  a. tanggalnya belum terisi,
+     *  b. tidak ada tahap sesudahnya yang sudah terisi, dan
+     *  c. tahap tepat sebelumnya sudah terisi — atau ini tahap pertama.
      *
-     * Syarat (d) yang membuat bidang dengan tahap terlewat tetap terhitung di
+     * Syarat (c) yang membuat bidang dengan tahap terlewat tetap terhitung di
      * tahap yang benar.
      */
     public function menunggu(Tahap $tahap): string
@@ -40,7 +37,6 @@ final class SyaratTahap
         $indeks = $tahap->urutan - 1;
 
         $syarat = [
-            $this->berlaku($tahap),
             $this->kolomAman($tahap->kolom).' is null',
             ...$this->sesudahnyaKosong($tahapan, $indeks),
             $this->pendahuluTerisi($tahapan, $indeks),
@@ -50,24 +46,21 @@ final class SyaratTahap
     }
 
     /**
-     * Tahap aktif bidang ini adalah tahap tersebut: berlaku, tanggalnya
-     * terisi, dan tidak ada tahap berlaku sesudahnya yang terisi.
+     * Tahap aktif bidang ini adalah tahap tersebut: tanggalnya terisi dan
+     * tidak ada tahap sesudahnya yang terisi.
      */
     public function aktif(Tahap $tahap): string
     {
-        $tahapan = Tahapan::semua();
-
         $syarat = [
-            $this->berlaku($tahap),
             $this->kolomAman($tahap->kolom).' is not null',
-            ...$this->sesudahnyaKosong($tahapan, $tahap->urutan - 1),
+            ...$this->sesudahnyaKosong(Tahapan::semua(), $tahap->urutan - 1),
         ];
 
         return '('.implode(' and ', $syarat).')';
     }
 
     /**
-     * Belum ada satu pun tahap berlaku yang terisi.
+     * Belum ada satu pun tahap yang terisi.
      */
     public function belumMulai(): string
     {
@@ -121,22 +114,17 @@ final class SyaratTahap
     }
 
     /**
-     * Seluruh tahap berlaku sesudah indeks tertentu belum terisi.
+     * Seluruh tahap sesudah indeks tertentu belum terisi.
      *
      * @param  list<Tahap>  $tahapan
      * @return list<string>
      */
     private function sesudahnyaKosong(array $tahapan, int $indeks): array
     {
-        $syarat = [];
-
-        foreach (array_slice($tahapan, $indeks + 1) as $sesudah) {
-            $syarat[] = $sesudah->kolomStatus === null
-                ? $this->kolomAman($sesudah->kolom).' is null'
-                : '('.$this->tidakBerlaku($sesudah).' or '.$this->kolomAman($sesudah->kolom).' is null)';
-        }
-
-        return $syarat;
+        return array_values(array_map(
+            fn (Tahap $sesudah): string => $this->kolomAman($sesudah->kolom).' is null',
+            array_slice($tahapan, $indeks + 1),
+        ));
     }
 
     /**
@@ -148,48 +136,6 @@ final class SyaratTahap
             return '1 = 1';
         }
 
-        $pilihan = [];
-        $diantara = [];
-
-        for ($j = $indeks - 1; $j >= 0; $j--) {
-            $sebelum = $tahapan[$j];
-
-            $pilihan[] = '('.implode(' and ', array_merge(
-                [$this->berlaku($sebelum), $this->kolomAman($sebelum->kolom).' is not null'],
-                $diantara,
-            )).')';
-
-            // Tahap wajib selalu berlaku, jadi pencarian pendahulu berhenti di
-            // sini: tahap sebelum ini tidak mungkin menjadi tahap aktif.
-            if ($sebelum->kolomStatus === null) {
-                return '('.implode(' or ', $pilihan).')';
-            }
-
-            $diantara[] = $this->tidakBerlaku($sebelum);
-        }
-
-        // Seluruh tahap sebelumnya kondisional; bila semuanya tidak berlaku,
-        // tahap ini adalah tahap berlaku pertama.
-        $pilihan[] = '('.implode(' and ', $diantara).')';
-
-        return '('.implode(' or ', $pilihan).')';
-    }
-
-    private function berlaku(Tahap $tahap): string
-    {
-        if ($tahap->kolomStatus === null) {
-            return '1 = 1';
-        }
-
-        return $this->kolomAman($tahap->kolomStatus).' = '.$this->nilaiAman(StatusTahap::Berlaku->value);
-    }
-
-    private function tidakBerlaku(Tahap $tahap): string
-    {
-        if ($tahap->kolomStatus === null) {
-            return '1 = 0';
-        }
-
-        return $this->kolomAman($tahap->kolomStatus).' = '.$this->nilaiAman(StatusTahap::TidakBerlaku->value);
+        return $this->kolomAman($tahapan[$indeks - 1]->kolom).' is not null';
     }
 }

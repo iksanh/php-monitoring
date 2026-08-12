@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace App\Enums;
 
 /**
- * Nilai kolom pendamping tahap kondisional (`pengumuman_status`,
- * `kewajiban_status`).
+ * PENINGGALAN. Tahap kondisional sudah dihapus dari spec — seluruh tahap kini
+ * wajib — dan kolom `pengumuman_status` serta `kewajiban_status` dibuang oleh
+ * migrasi 2026_08_12_140000.
  *
- * `TidakBerlaku` berarti tahap dilewati dalam perhitungan tahap aktif, tidak
- * dihitung sebagai bidang tertahan, dan tidak masuk penyebut persentase.
+ * Enum ini hanya disisakan karena migrasi 2026_08_12_100100 menyebutnya, dan
+ * migrasi lama tidak boleh diubah. Jangan dipakai kode baru.
  */
 enum StatusTahap: string
 {

@@ -27,7 +27,7 @@ class BidangController extends Controller
         $filter = FilterBidang::dariRequest($request);
 
         $daftar = $filter
-            ->terapkan(Bidang::query()->with('instansi'))
+            ->terapkan(Bidang::query()->with(['instansi', 'kendalaAktif']))
             ->orderBy('nomor_urut')
             ->paginate(25)
             ->withQueryString();
@@ -79,7 +79,10 @@ class BidangController extends Controller
     {
         Gate::authorize('view', $bidang);
 
-        $bidang->load(['instansi', 'kendala' => fn ($query) => $query->orderByDesc('tanggal_catat')]);
+        $bidang->load([
+            'instansi',
+            'kendala' => fn ($query) => $query->orderByDesc('tanggal_catat'),
+        ]);
 
         return view('bidang.show', [
             'bidang' => $bidang,

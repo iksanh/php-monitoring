@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Enums\PenanggungJawab;
-use App\Enums\SifatTahap;
 use InvalidArgumentException;
 
 /**
@@ -13,51 +12,45 @@ use InvalidArgumentException;
  *
  * Bukan sumber data — hanya pembungkus supaya config dapat dibaca terketik
  * (`$tahap->label`) di controller, service, dan Blade. Satu-satunya sumber
- * nama, urutan, unit, dan sifat tahap tetap `config/tahapan.php`.
+ * nama, urutan, dan unit tahap tetap `config/tahapan.php`.
  */
 final readonly class Tahap
 {
+    /**
+     * Peninggalan skema lama: selalu null sejak tahap kondisional dihapus.
+     *
+     * Dipertahankan semata karena migrasi
+     * `2026_08_12_100100_create_bidang_table` membaca config saat dijalankan
+     * dan menyentuh properti ini. Jangan dipakai kode baru.
+     */
+    public ?string $kolomStatus;
+
     public function __construct(
         public int $urutan,
         public string $kolom,
         public string $label,
+        public string $labelMenunggu,
         public string $unit,
         public PenanggungJawab $penanggungJawab,
         public string $dokumen,
-        public SifatTahap $sifat,
-        public ?string $kolomStatus,
-    ) {}
+    ) {
+        $this->kolomStatus = null;
+    }
 
     /**
      * @param  array<string, mixed>  $definisi
      */
     public static function dariConfig(int $urutan, array $definisi): self
     {
-        $sifat = SifatTahap::from(self::teks($definisi, 'sifat'));
-
-        $kolomStatus = $definisi['kolom_status'] ?? null;
-
-        if ($sifat === SifatTahap::Kondisional && ! is_string($kolomStatus)) {
-            throw new InvalidArgumentException(
-                "Tahap kondisional [{$definisi['kolom']}] wajib punya kolom_status pada config/tahapan.php."
-            );
-        }
-
         return new self(
             urutan: $urutan,
             kolom: self::teks($definisi, 'kolom'),
             label: self::teks($definisi, 'label'),
+            labelMenunggu: self::teks($definisi, 'label_menunggu'),
             unit: self::teks($definisi, 'unit'),
             penanggungJawab: PenanggungJawab::from(self::teks($definisi, 'penanggung_jawab')),
             dokumen: self::teks($definisi, 'dokumen'),
-            sifat: $sifat,
-            kolomStatus: is_string($kolomStatus) ? $kolomStatus : null,
         );
-    }
-
-    public function kondisional(): bool
-    {
-        return $this->sifat === SifatTahap::Kondisional;
     }
 
     /**

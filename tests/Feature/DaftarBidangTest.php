@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\KategoriKendala;
 use App\Enums\PenanggungJawab;
 use App\Enums\Peran;
 use App\Enums\StatusBidang;
-use App\Enums\StatusTahap;
 use App\Models\Bidang;
 use App\Models\Instansi;
+use App\Models\Kendala;
 use App\Models\User;
 use App\Support\Filter\FilterBidang;
-use App\Support\Tahap;
 use App\Support\Tahapan;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -40,8 +40,10 @@ class DaftarBidangTest extends TestCase
 
     public function test_penyaringan_status_sudah_diserahkan(): void
     {
-        Bidang::factory()->create(['nomor_urut' => 'HP-SERAH', 'status' => StatusBidang::Diserahkan]);
-        Bidang::factory()->create(['nomor_urut' => 'HP-SELESAI', 'status' => StatusBidang::Selesai]);
+        // Status turunan, jadi dibentuk lewat tanggalnya: yang satu sampai
+        // serah terima, yang lain berhenti di penerbitan sertipikat.
+        Bidang::factory()->tuntas()->create(['nomor_urut' => 'HP-SERAH']);
+        Bidang::factory()->sampaiTahap(Tahapan::jumlah() - 1)->create(['nomor_urut' => 'HP-SELESAI']);
 
         $this->masuk()->get(route('bidang.index', ['status' => StatusBidang::Diserahkan->value]))
             ->assertOk()
@@ -53,12 +55,13 @@ class DaftarBidangTest extends TestCase
     {
         $instansi = Instansi::factory()->create();
 
-        Bidang::factory()->create([
+        $cocok = Bidang::factory()->create([
             'nomor_urut' => 'HP-COCOK',
             'instansi_id' => $instansi->id,
-            'status' => StatusBidang::Terkendala,
             'tahun_target' => 2026,
         ]);
+        Kendala::factory()->create(['bidang_id' => $cocok->id]);
+
         Bidang::factory()->create(['nomor_urut' => 'HP-LAIN', 'tahun_target' => 2024]);
 
         $this->masuk()->get(route('bidang.index', ['instansi' => $instansi->id]))
@@ -127,35 +130,44 @@ class DaftarBidangTest extends TestCase
         }
     }
 
-    public function test_penyaringan_tahap_aktif_menghormati_tahap_tidak_berlaku(): void
+    /**
+     * Yang disaring adalah kendala yang masih terbuka; kendala yang sudah
+     * ditutup tersimpan sebagai riwayat dan tidak lagi menjaring bidangnya.
+     */
+    public function test_penyaringan_kategori_kendala(): void
     {
-        $kondisional = $this->tahapKondisional();
+        $sengketa = Bidang::factory()->create(['nomor_urut' => 'HP-SENGKETA']);
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->create(['bidang_id' => $sengketa->id]);
+
+        $hutan = Bidang::factory()->create(['nomor_urut' => 'HP-HUTAN']);
+        Kendala::factory()->kategori(KategoriKendala::KawasanHutan)->create(['bidang_id' => $hutan->id]);
+
+        $tutup = Bidang::factory()->create(['nomor_urut' => 'HP-TUTUP']);
+        Kendala::factory()->kategori(KategoriKendala::Sengketa)->selesai()->create(['bidang_id' => $tutup->id]);
+
+        $this->masuk()->get(route('bidang.index', ['kendala' => KategoriKendala::Sengketa->value]))
+            ->assertOk()
+            ->assertSee('HP-SENGKETA')
+            ->assertDontSee('HP-HUTAN')
+            ->assertDontSee('HP-TUTUP');
+    }
+
+    public function test_daftar_menampilkan_kondisi_berjalan_dan_kategori_kendala(): void
+    {
         $tahapan = Tahapan::semua();
-        $sebelum = $tahapan[$kondisional->urutan - 2];
 
-        // Tahap kondisional dinyatakan tidak berlaku dan tanggalnya terlanjur
-        // terisi: tahap aktifnya tetap tahap sebelumnya.
-        $bidang = Bidang::factory()->create([
-            $kondisional->kolomStatus => StatusTahap::TidakBerlaku->value,
-            $kondisional->kolom => '2026-05-05',
-            $sebelum->kolom => '2026-04-05',
-        ]);
+        $bidang = Bidang::factory()->sampaiTahap(1)->create(['nomor_urut' => 'HP-KONDISI']);
+        Kendala::factory()->kategori(KategoriKendala::BerkasKurang)->create(['bidang_id' => $bidang->id]);
 
-        $this->assertSame($sebelum->kolom, $bidang->tahapAktif?->kolom);
-
-        $this->assertSame(
-            0,
-            (new FilterBidang(tahapAktif: $kondisional->kolom))->terapkan(Bidang::query())->count()
-        );
-        $this->assertSame(
-            1,
-            (new FilterBidang(tahapAktif: $sebelum->kolom))->terapkan(Bidang::query())->count()
-        );
+        $this->masuk()->get(route('bidang.index'))
+            ->assertOk()
+            ->assertSee($tahapan[1]->labelMenunggu)
+            ->assertSee(mb_strtolower(KategoriKendala::BerkasKurang->label()));
     }
 
     public function test_filter_tersimpan_di_query_string_pagination(): void
     {
-        Bidang::factory()->count(30)->create(['status' => StatusBidang::Proses]);
+        Bidang::factory()->count(30)->create();
 
         $halaman = $this->masuk()->get(route('bidang.index', [
             'status' => StatusBidang::Proses->value,
@@ -211,16 +223,5 @@ class DaftarBidangTest extends TestCase
     private function masuk(): self
     {
         return $this->actingAs(User::factory()->peran(Peran::Viewer)->create());
-    }
-
-    private function tahapKondisional(): Tahap
-    {
-        foreach (Tahapan::semua() as $tahap) {
-            if ($tahap->kondisional()) {
-                return $tahap;
-            }
-        }
-
-        $this->markTestSkipped('config/tahapan.php tidak punya tahap kondisional.');
     }
 }
