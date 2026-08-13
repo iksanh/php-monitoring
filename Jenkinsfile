@@ -102,10 +102,12 @@ pipeline {
                               "Set them in Manage Jenkins → System → Global properties → Environment variables.")
                     }
 
-                    if (env.DEPLOY_PATH?.trim()) {
-                        error("DEPLOY_PATH is set as a Jenkins GLOBAL env var. Remove it — " +
-                              "it is shared by every job and will make one app deploy over another. " +
-                              "The path belongs in this job's DEPLOY_PATH parameter.")
+                   // DEPLOY_PATH may exist as a global env var — the older phpt job still
+                    // relies on it. This job deliberately ignores it and uses its own
+                    // parameter instead. Warn only, never fail.
+                    if (env.DEPLOY_PATH?.trim() && env.DEPLOY_PATH.trim() != params.DEPLOY_PATH) {
+                        echo "NOTE: global DEPLOY_PATH is '${env.DEPLOY_PATH}' — ignored. " +
+                             "This job deploys to '${params.DEPLOY_PATH}'."
                     }
 
                     def placeholders = []
