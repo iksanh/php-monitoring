@@ -54,7 +54,7 @@ pipeline {
         string(name: 'DEPLOY_PATH',   defaultValue: '/home/u983422899/public_html/phpt', description: 'Absolute path of THIS app on the server. Per-job — never set globally.')
         // Contents of <DEPLOY_PATH>/.deploy-marker. Guards against deploying to the wrong app.
         // Example: monitoring-hakpakai
-        string(name: 'DEPLOY_MARKER', defaultValue: 'APPNAME', description: 'Expected content of .deploy-marker in DEPLOY_PATH')
+        string(name: 'DEPLOY_MARKER', defaultValue: 'monitoring-hakpakai', description: 'Expected content of .deploy-marker in DEPLOY_PATH')
         // Public URL used by the smoke test.
         // Example: https://sibolang.net/monitoring
         string(name: 'SMOKE_URL',     defaultValue: 'https://monitoring.sibolang.net/public', description: 'Public URL to smoke test after release')
