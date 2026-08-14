@@ -95,6 +95,23 @@ pipeline {
             }
         }
 
+        stage('Build: composer (agent — untuk aset saja)') {
+            // Flux/Livewire menaruh CSS-nya di vendor/, dan resources/css/app.css
+            // mengimpornya. Vite di agent perlu vendor/ agar import itu resolve.
+            // --no-scripts: jangan jalankan post-install artisan di agent.
+            // vendor/ hasil agent TIDAK dikirim — sudah di-exclude dari rsync, dan
+            // vendor produksi tetap dibangun di server dengan PHP 8.4. Aturan
+            // "vendor dibangun di server" tetap utuh.
+            steps {
+                sh '''
+                    set -e
+                    php -v
+                    composer --version
+                    composer install --no-scripts --no-interaction --prefer-dist --no-progress
+                '''
+            }
+        }
+
         stage('Build: Frontend assets') {
             steps {
                 sh '''
