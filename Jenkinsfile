@@ -97,17 +97,19 @@ pipeline {
 
         stage('Build: composer (agent — untuk aset saja)') {
             // Flux/Livewire menaruh CSS-nya di vendor/, dan resources/css/app.css
-            // mengimpornya. Vite di agent perlu vendor/ agar import itu resolve.
-            // --no-scripts: jangan jalankan post-install artisan di agent.
+            // mengimpornya, jadi Vite di agent perlu vendor/ agar import itu resolve.
+            //
+            // --no-autoloader mematikan post-autoload-dump (package:discover), yang
+            // butuh bootstrap/cache dan .env — keduanya tidak ada di workspace Jenkins.
+            // Kita hanya perlu file paketnya di disk, bukan aplikasi yang bootable.
+            //
             // vendor/ hasil agent TIDAK dikirim — sudah di-exclude dari rsync, dan
-            // vendor produksi tetap dibangun di server dengan PHP 8.4. Aturan
-            // "vendor dibangun di server" tetap utuh.
+            // vendor produksi tetap dibangun di server dengan PHP 8.4.
             steps {
                 sh '''
                     set -e
-                    php -v
-                    composer --version
-                    composer install --no-scripts --no-interaction --prefer-dist --no-progress
+                    mkdir -p bootstrap/cache storage/framework/{cache,sessions,views} storage/logs
+                    composer install --no-scripts --no-autoloader --no-interaction --prefer-dist --no-progress
                 '''
             }
         }
