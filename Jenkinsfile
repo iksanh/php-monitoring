@@ -12,17 +12,11 @@
 //    --delete wiped it and the domain fell back to global PHP 7.4 → 500.
 //  • PHP_BIN defaults to the alt-php 8.4 binary, NOT `php` (which is 7.4 CLI here).
 //    All artisan/composer on the server go through this.
-//
-// WHY DEPLOY_PATH IS A JOB PARAMETER, NOT A GLOBAL ENV VAR:
-//    Jenkins global properties are shared by EVERY job on the controller. With more
-//    than one Laravel app on this same server, a single global DEPLOY_PATH means
-//    whichever job ran last silently decides where the other one deploys — and
-//    rsync --delete would wipe a live app. HOST/USER/PORT stay global because they
-//    are genuinely identical for all apps here; only the path (and the smoke-test
-//    URL that follows from it) is per-app.
-//
-//    A .deploy-marker file on the server is checked before rsync runs. If the path
-//    is ever wrong, the build stops before a single file is touched.
+//  • DEPLOY_PATH is a JOB PARAMETER, not a global env var. Host/user/port are the
+//    same for every app on this server, but the path is not — a single global
+//    DEPLOY_PATH means whichever job ran last decides where the other one deploys,
+//    and rsync --delete would wipe a live app. The global DEPLOY_PATH may still
+//    exist for older jobs; this job ignores it.
 //
 // Job setup: "Pipeline" job → "Pipeline script from SCM" → this repo,
 // Script Path = Jenkinsfile.
@@ -32,13 +26,7 @@
 //   DEPLOY_HOST  (e.g. 153.92.x.x)
 //   DEPLOY_USER  (e.g. u983422899)
 //   DEPLOY_PORT  (Hostinger = 65002)
-// DEPLOY_PATH must NOT be set globally — remove it if it is still there.
-//
-// One-time server setup for each app:
-//   mkdir -p <DEPLOY_PATH>
-//   echo "<app-name>" > <DEPLOY_PATH>/.deploy-marker
-//   create <DEPLOY_PATH>/.env and <DEPLOY_PATH>/public/.htaccess by hand
-//   (both are rsync-excluded and will never be shipped)
+// The deploy path is set per job in the DEPLOY_PATH parameter below.
 //
 // Agent prerequisites (install once in WSL): node + npm, rsync, ssh/openssh-client.
 // NOTE: the agent no longer needs php/composer — vendor is built on the server.
@@ -48,24 +36,14 @@ pipeline {
     agent any
 
     parameters {
-        // ── Per-app settings: THIS is what differs between jobs ──────────────
-        // Absolute path on the server. Must already exist and contain .deploy-marker.
-        // Example: /home/u983422899/domains/sibolang.net/public_html/monitoring
-        string(name: 'DEPLOY_PATH',   defaultValue: '/home/u983422899/public_html/monitoring', description: 'Absolute path of THIS app on the server. Per-job — never set globally.')
-        // Contents of <DEPLOY_PATH>/.deploy-marker. Guards against deploying to the wrong app.
-        // Example: monitoring-hakpakai
-        string(name: 'DEPLOY_MARKER', defaultValue: 'monitoring-hakpakai', description: 'Expected content of .deploy-marker in DEPLOY_PATH')
-        // Public URL used by the smoke test.
-        // Example: https://sibolang.net/monitoring
-        string(name: 'SMOKE_URL',     defaultValue: 'https://monitoring.sibolang.net/public', description: 'Public URL to smoke test after release')
-
-        // ── Shared toolchain settings ────────────────────────────────────────
+        // Absolute path of THIS app on the server. Per job — never set globally.
+        string(name: 'DEPLOY_PATH', defaultValue: '/home/u983422899/public_html/monitoring', description: 'Absolute path of this app on the server')
         // alt-php 8.4 binary on the server. The default `php` CLI here is 7.4 —
         // do NOT use it. This must match the PHP version your .htaccess handler
         // pins for the web (php84___lsphp), so vendor and runtime agree.
-        string(name: 'PHP_BIN',      defaultValue: '/opt/alt/php84/usr/bin/php', description: 'PHP CLI on the server — must match the web PHP (8.4)')
-        string(name: 'COMPOSER_BIN', defaultValue: '/usr/local/bin/composer',    description: 'Composer on the server')
-        string(name: 'SSH_CRED_ID',  defaultValue: 'hostinger-ssh',              description: 'Jenkins credentials ID — "SSH Username with private key"')
+        string(name: 'PHP_BIN',     defaultValue: '/opt/alt/php84/usr/bin/php', description: 'PHP CLI on the server — must match the web PHP (8.4). e.g. /opt/alt/php84/usr/bin/php')
+        string(name: 'COMPOSER_BIN', defaultValue: '/usr/local/bin/composer', description: 'Composer on the server')
+        string(name: 'SSH_CRED_ID', defaultValue: 'hostinger-ssh', description: 'Jenkins credentials ID — "SSH Username with private key"')
         booleanParam(name: 'RUN_MIGRATIONS',   defaultValue: true,  description: 'Run "artisan migrate --force" after deploy')
         booleanParam(name: 'MAINTENANCE_MODE', defaultValue: true,  description: 'Put the site in maintenance mode during the release step')
     }
@@ -89,8 +67,7 @@ pipeline {
         }
 
         stage('Verify config') {
-            // Fail fast with a clear message if the global env vars aren't set,
-            // or if the per-job parameters are still on their placeholder defaults.
+            // Fail fast with a clear message if the global env vars aren't set.
             steps {
                 script {
                     def missing = []
@@ -101,26 +78,7 @@ pipeline {
                         error("Missing Jenkins global env vars: ${missing.join(', ')}. " +
                               "Set them in Manage Jenkins → System → Global properties → Environment variables.")
                     }
-
-                   // DEPLOY_PATH may exist as a global env var — the older phpt job still
-                    // relies on it. This job deliberately ignores it and uses its own
-                    // parameter instead. Warn only, never fail.
-                    if (env.DEPLOY_PATH?.trim() && env.DEPLOY_PATH.trim() != params.DEPLOY_PATH) {
-                        echo "NOTE: global DEPLOY_PATH is '${env.DEPLOY_PATH}' — ignored. " +
-                             "This job deploys to '${params.DEPLOY_PATH}'."
-                    }
-
-                    def placeholders = []
-                    if (params.DEPLOY_PATH.contains('APPFOLDER') || params.DEPLOY_PATH.contains('USER')) { placeholders.add('DEPLOY_PATH') }
-                    if (params.DEPLOY_MARKER == 'APPNAME')                                              { placeholders.add('DEPLOY_MARKER') }
-                    if (params.SMOKE_URL.contains('DOMAIN'))                                            { placeholders.add('SMOKE_URL') }
-                    if (placeholders) {
-                        error("Still on placeholder defaults: ${placeholders.join(', ')}. " +
-                              "Edit the defaults in this Jenkinsfile for this app.")
-                    }
-
                     echo "Deploy target: ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${params.DEPLOY_PATH} (port ${env.DEPLOY_PORT})"
-                    echo "Marker: ${params.DEPLOY_MARKER}   Smoke URL: ${params.SMOKE_URL}"
                 }
             }
         }
@@ -134,38 +92,6 @@ pipeline {
                     echo "npm:   $(npm -v)"
                     echo "rsync: $(rsync --version | head -1)"
                 '''
-            }
-        }
-
-        stage('Guard: verify deploy path') {
-            // Runs BEFORE rsync --delete. Confirms the target directory exists and
-            // that its .deploy-marker names this app. A mistyped or stale path fails
-            // here instead of overwriting a live application.
-            steps {
-                sshagent(credentials: [params.SSH_CRED_ID]) {
-                    sh """
-                        set -e
-                        ssh ${SSH_OPTS} ${env.DEPLOY_USER}@${env.DEPLOY_HOST} bash -s <<'REMOTE'
-set -e
-MARKER_FILE='${params.DEPLOY_PATH}/.deploy-marker'
-if [ ! -f "\$MARKER_FILE" ]; then
-    echo "ABORT: \$MARKER_FILE not found."
-    echo "Either DEPLOY_PATH is wrong, or this is a first deploy."
-    echo "For a first deploy, run on the server:"
-    echo "  mkdir -p '${params.DEPLOY_PATH}'"
-    echo "  echo '${params.DEPLOY_MARKER}' > '${params.DEPLOY_PATH}/.deploy-marker'"
-    exit 1
-fi
-FOUND=\$(head -1 "\$MARKER_FILE" | tr -d '[:space:]')
-if [ "\$FOUND" != '${params.DEPLOY_MARKER}' ]; then
-    echo "ABORT: marker mismatch. Expected '${params.DEPLOY_MARKER}' but found '\$FOUND'."
-    echo "DEPLOY_PATH points at a DIFFERENT application. Refusing to deploy."
-    exit 1
-fi
-echo "Marker OK: \$FOUND"
-REMOTE
-                    """
-                }
             }
         }
 
@@ -189,7 +115,6 @@ REMOTE
                     //   /public/storage    storage symlink
                     //   /public/.htaccess  carries the PHP 8.4 LiteSpeed handler — DO NOT overwrite
                     //   /vendor            built on the server in the next stage, not shipped
-                    //   /.deploy-marker    the guard file checked above
                     sh """
                         set -e
                         rsync -az --delete \
@@ -203,7 +128,6 @@ REMOTE
                             --exclude='/public/storage' \
                             --exclude='/public/.htaccess' \
                             --exclude='/public/hot' \
-                            --exclude='/.deploy-marker' \
                             --exclude='Jenkinsfile' \
                             -e "ssh ${SSH_OPTS}" \
                             ./ ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:'${params.DEPLOY_PATH}/'
@@ -250,15 +174,15 @@ REMOTE
         stage('Smoke test') {
             // Confirm the site actually responds instead of declaring success blindly.
             steps {
-                sh """
+                sh '''
                     set -e
-                    code=\$(curl -s -o /dev/null -w '%{http_code}' '${params.SMOKE_URL}' || echo "000")
-                    echo "HTTP status: \$code"
-                    case "\$code" in
+                    code=$(curl -s -o /dev/null -w '%{http_code}' https://monitoring.sibolang.net || echo "000")
+                    echo "HTTP status: $code"
+                    case "$code" in
                         200|302) echo "OK" ;;
-                        *) echo "Unexpected status \$code"; exit 1 ;;
+                        *) echo "Unexpected status $code"; exit 1 ;;
                     esac
-                """
+                '''
             }
         }
     }
