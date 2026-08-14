@@ -51,7 +51,7 @@ pipeline {
         // ── Per-app settings: THIS is what differs between jobs ──────────────
         // Absolute path on the server. Must already exist and contain .deploy-marker.
         // Example: /home/u983422899/domains/sibolang.net/public_html/monitoring
-        string(name: 'DEPLOY_PATH',   defaultValue: '/home/u983422899/public_html/phpt', description: 'Absolute path of THIS app on the server. Per-job — never set globally.')
+        string(name: 'DEPLOY_PATH',   defaultValue: '/home/u983422899/public_html/monitoring', description: 'Absolute path of THIS app on the server. Per-job — never set globally.')
         // Contents of <DEPLOY_PATH>/.deploy-marker. Guards against deploying to the wrong app.
         // Example: monitoring-hakpakai
         string(name: 'DEPLOY_MARKER', defaultValue: 'monitoring-hakpakai', description: 'Expected content of .deploy-marker in DEPLOY_PATH')
