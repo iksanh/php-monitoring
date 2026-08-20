@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\BidangController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ImporBidangController;
 use App\Http\Controllers\InstansiController;
 use App\Http\Controllers\JenisInstansiController;
 use App\Http\Controllers\KendalaController;
@@ -19,9 +20,22 @@ Route::get('/', function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
 
-    // Harus di atas route resource, kalau tidak "export" akan ditangkap
-    // sebagai parameter {bidang}.
+    // Harus di atas route resource, kalau tidak "export" dan "impor" akan
+    // ditangkap sebagai parameter {bidang}.
     Route::get('bidang/export', [BidangController::class, 'export'])->name('bidang.export');
+
+    // Aksi massal dari daftar bidang: memilih bidang mana yang dikerjakan.
+    // Penyaring aktif ikut di query string supaya "seluruh hasil penyaringan"
+    // membaca batasan yang sama dengan yang dilihat operator di layar.
+    Route::post('bidang/proses', [BidangController::class, 'proses'])->name('bidang.proses');
+    Route::post('bidang/kembalikan', [BidangController::class, 'kembalikan'])->name('bidang.kembalikan');
+
+    // Impor Excel. Menulis bidang, jadi dijaga Policy `create` di controller.
+    Route::get('bidang/impor', [ImporBidangController::class, 'form'])->name('bidang.impor.form');
+    Route::get('bidang/impor/template', [ImporBidangController::class, 'template'])->name('bidang.impor.template');
+    Route::post('bidang/impor', [ImporBidangController::class, 'pratinjau'])->name('bidang.impor.pratinjau');
+    Route::post('bidang/impor/simpan', [ImporBidangController::class, 'simpan'])->name('bidang.impor.simpan');
+    Route::post('bidang/impor/batal', [ImporBidangController::class, 'batal'])->name('bidang.impor.batal');
 
     // Membaca terbuka untuk semua peran; menulis dijaga Policy di controller.
     // Parameter ditulis eksplisit: penunggalan otomatis Laravel bekerja untuk

@@ -43,6 +43,13 @@ class BidangSeeder extends Seeder
      */
     private const ACAK = 14;
 
+    /**
+     * Aset yang baru tercatat dan belum dipilih Kantor Pertanahan untuk
+     * dikerjakan. Nyata adanya: daftar aset pemda jauh lebih panjang daripada
+     * yang sanggup diproses satu tahun.
+     */
+    private const ANTREAN = 8;
+
     public function run(): void
     {
         /** @var Collection<int, Instansi> $instansi */
@@ -85,12 +92,22 @@ class BidangSeeder extends Seeder
         }
 
         for ($i = 0; $i < self::ACAK; $i++) {
-            // Termasuk beberapa yang berkasnya belum masuk sama sekali.
-            $terisi = random_int(0, $jumlahTahap - 1);
+            // Berputar rata dari tahap nol, termasuk beberapa yang berkasnya
+            // belum masuk sama sekali. Sengaja berputar, bukan diundi: undian
+            // sesekali mengosongkan satu tahap tengah, dan dashboard contoh
+            // jadi tidak menunjukkan penumpukan yang mestinya terlihat.
+            $terisi = $i % $jumlahTahap;
             $mulai = $this->mulai(max($terisi, 1), 15, 120);
 
             Bidang::factory()
                 ->sampaiTahap($terisi, $mulai)
+                ->tahunTarget($tahunIni)
+                ->create(['instansi_id' => $this->instansi($instansi)]);
+        }
+
+        for ($i = 0; $i < self::ANTREAN; $i++) {
+            Bidang::factory()
+                ->antrean()
                 ->tahunTarget($tahunIni)
                 ->create(['instansi_id' => $this->instansi($instansi)]);
         }
@@ -108,6 +125,7 @@ class BidangSeeder extends Seeder
     private function kendala(): void
     {
         $belumSelesai = Bidang::query()
+            ->dipantau()
             ->whereNull(Bidang::KOLOM_SERAH_TERIMA)
             ->inRandomOrder()
             ->limit(count(KategoriKendala::cases()) + 4)
@@ -125,6 +143,7 @@ class BidangSeeder extends Seeder
         }
 
         Bidang::query()
+            ->dipantau()
             ->whereDoesntHave('kendala')
             ->inRandomOrder()
             ->limit(5)

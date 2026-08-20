@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    // Menyebut `commands:` di atas hanya mendaftarkan routes/console.php;
+    // panggilan kosong inilah yang membuat kelas di app/Console/Commands
+    // ikut terbaca.
+    ->withCommands()
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'role' => PastikanPeran::class,

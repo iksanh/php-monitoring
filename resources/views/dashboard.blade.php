@@ -42,7 +42,10 @@
     <div class="mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6">
         <div>
             <h1 class="text-lg font-semibold sm:text-xl">Dashboard</h1>
-            <p class="text-sm text-zinc-500">Capaian sertipikasi Hak Pakai target tahun {{ $tahun }}.</p>
+            <p class="text-sm text-zinc-500">
+                Capaian sertipikasi Hak Pakai target tahun {{ $tahun }}, dihitung dari bidang yang
+                sedang diproses Kantor Pertanahan.
+            </p>
         </div>
 
         <div class="text-sm {{ $dataBasi ? 'rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900' : 'text-zinc-500' }}">
@@ -55,6 +58,40 @@
                 Pemutakhiran data terakhir: <span class="font-medium text-zinc-700">{{ \App\Support\Tanggal::waktu($pemutakhiran) }}</span>
             @endif
         </div>
+    </div>
+
+    {{--
+        Angka daftar aset dipisah dari kartu tahun berjalan. Kartu di bawah
+        menghitung pekerjaan Kantor Pertanahan; baris ini menerangkan
+        latarnya — berapa aset pemda seluruhnya, berapa yang sudah dipilih
+        untuk dikerjakan, dan berapa yang masih antre.
+    --}}
+    <div class="mb-4 rounded-lg border border-zinc-200 bg-white p-4 sm:p-5">
+        <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <p class="text-sm font-medium text-zinc-700">Daftar aset pemda</p>
+
+            <a href="{{ route('bidang.index', ['pantauan' => \App\Support\Filter\FilterBidang::ANTREAN]) }}"
+               class="text-sm font-medium text-zinc-600 underline-offset-2 hover:text-zinc-900 hover:underline">
+                Pilih bidang yang diproses
+            </a>
+        </div>
+
+        <dl class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            @foreach ([
+                ['Total aset', $ringkasAset->total, 'bidang tercatat'],
+                ['Sedang diproses', $ringkasAset->dipantau, $ringkasAset->persenDipantau().'% dari daftar aset'],
+                ['Belum diproses', $ringkasAset->antrean, 'menunggu dipilih'],
+                ['Bersertipikat terdahulu', $ringkasAset->riwayatBersertipikat, 'sudah diserahkan sebelum pantauan'],
+            ] as [$judulRingkas, $angkaRingkas, $keteranganRingkas])
+                <div>
+                    <dt class="text-xs text-zinc-500">{{ $judulRingkas }}</dt>
+                    <dd class="mt-0.5 text-lg font-semibold tabular-nums text-zinc-900">
+                        {{ number_format($angkaRingkas, 0, ',', '.') }}
+                    </dd>
+                    <dd class="text-xs text-zinc-500">{{ $keteranganRingkas }}</dd>
+                </div>
+            @endforeach
+        </dl>
     </div>
 
     {{-- Kartu pertama melebar penuh di ponsel supaya empat sisanya jatuh rapi

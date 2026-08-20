@@ -11,6 +11,7 @@ use App\Models\Bidang;
 use App\Models\Kendala;
 use App\Support\Dashboard\CapaianInstansi;
 use App\Support\Dashboard\KartuAngka;
+use App\Support\Dashboard\RingkasAset;
 use App\Support\Dashboard\TahapTertahan;
 use App\Support\Sql\SyaratTahap;
 use App\Support\Tahap;
@@ -37,9 +38,42 @@ class DashboardService
         private readonly SyaratTahap $syarat = new SyaratTahap,
     ) {}
 
+    /**
+     * Ringkasan seluruh daftar aset, lintas tahun.
+     *
+     * Satu query agregasi: dashboard sudah cukup banyak query tanpa perlu
+     * empat hitungan terpisah untuk empat angka yang sumbernya sama.
+     */
+    public function ringkasAset(): RingkasAset
+    {
+        $terbit = $this->syarat->kolomAman(Bidang::KOLOM_TERBIT);
+
+        $baris = Bidang::query()
+            ->select($this->syarat->ekspresi(
+                'count(*) as jml_total,'
+                .' sum(case when tgl_diproses is not null then 1 else 0 end) as jml_dipantau,'
+                .' sum(case when tgl_diproses is null and '.$terbit.' is null then 1 else 0 end) as jml_antrean,'
+                .' sum(case when tgl_diproses is null and '.$terbit.' is not null then 1 else 0 end) as jml_riwayat'
+            ))
+            ->first();
+
+        return new RingkasAset(
+            total: $this->angka($baris, 'jml_total'),
+            dipantau: $this->angka($baris, 'jml_dipantau'),
+            antrean: $this->angka($baris, 'jml_antrean'),
+            riwayatBersertipikat: $this->angka($baris, 'jml_riwayat'),
+        );
+    }
+
+    /**
+     * Kartu angka hanya menghitung bidang yang sudah dipilih untuk dikerjakan.
+     * Aset yang masih antre di daftar bukan pekerjaan berjalan, dan
+     * memasukkannya membuat angka "dalam proses" membengkak jadi ribuan.
+     */
     public function kartuAngka(int $tahun): KartuAngka
     {
         $baris = Bidang::query()
+            ->dipantau()
             ->where('tahun_target', $tahun)
             ->select($this->syarat->ekspresi(
                 'count(*) as jml_total,'
@@ -76,6 +110,7 @@ class DashboardService
         }
 
         $baris = Bidang::query()
+            ->dipantau()
             ->when($tahun !== null, fn ($query) => $query->where('tahun_target', $tahun))
             ->select($this->syarat->ekspresi(implode(', ', $pilih)))
             ->first();
@@ -134,6 +169,7 @@ class DashboardService
             ->join('bidang', 'bidang.id', '=', 'kendala.bidang_id')
             ->whereNull('kendala.tanggal_selesai')
             ->whereNull('bidang.deleted_at')
+            ->whereNotNull('bidang.tgl_diproses')
             ->when($tahun !== null, fn ($query) => $query->where('bidang.tahun_target', $tahun))
             ->groupBy('kendala.kategori')
             ->select('kendala.kategori')
@@ -159,6 +195,7 @@ class DashboardService
     {
         $baris = Bidang::query()
             ->join('instansi', 'instansi.id', '=', 'bidang.instansi_id')
+            ->whereNotNull('bidang.tgl_diproses')
             ->when($tahun !== null, fn ($query) => $query->where('bidang.tahun_target', $tahun))
             ->groupBy('instansi.id', 'instansi.nama')
             ->orderBy('instansi.nama')
@@ -189,6 +226,7 @@ class DashboardService
 
         return Bidang::query()
             ->with(['instansi', 'kendalaAktif'])
+            ->dipantau()
             ->whereNull(Bidang::KOLOM_TERBIT)
             ->whereNotNull($kolomMulai)
             ->orderBy($kolomMulai)

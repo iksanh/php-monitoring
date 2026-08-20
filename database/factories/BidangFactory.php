@@ -102,6 +102,16 @@ class BidangFactory extends Factory
     }
 
     /**
+     * Bidang yang baru tercatat di daftar aset dan belum dipilih untuk
+     * dikerjakan. Tanpa state ini bidang buatan factory langsung dipantau,
+     * sebab BidangObserver menganggap bidang baru sedang dikerjakan.
+     */
+    public function antrean(): static
+    {
+        return $this->state(fn (): array => ['tgl_diproses' => null]);
+    }
+
+    /**
      * @param  array<string, mixed>  $attributes
      */
     private function awalTahun(array $attributes): CarbonImmutable

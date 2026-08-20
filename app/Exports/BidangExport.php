@@ -47,12 +47,19 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
             'Nomor urut',
             'Nama aset',
             'Instansi pemilik',
+            'Pengguna barang',
             'Penggunaan',
             'Desa',
             'Kecamatan',
             'Luas (m2)',
+            'Jenis hak',
+            'Alas hak',
+            'Tanggal alas hak',
+            'Asal usul',
             'Nomor berkas KKP',
+            'Nomor sertipikat',
             'Tahun target',
+            'Tanggal diproses',
         ];
 
         foreach (Tahapan::semua() as $tahap) {
@@ -80,12 +87,19 @@ class BidangExport implements FromQuery, ShouldAutoSize, WithHeadings, WithMappi
             $row->nomor_urut,
             $row->nama_aset,
             $row->instansi->nama,
+            $row->pengguna_barang,
             $row->penggunaan,
             $row->desa,
             $row->kecamatan,
             $row->luas_m2 !== null ? (float) $row->luas_m2 : null,
+            $row->jenis_hak,
+            $row->alas_hak,
+            $row->tgl_alas_hak !== null ? Tanggal::pendek($row->tgl_alas_hak) : '',
+            $row->asal_usul,
             $row->nomor_berkas_kkp,
+            $row->nomor_sertipikat,
             $row->tahun_target,
+            $row->tgl_diproses !== null ? Tanggal::pendek($row->tgl_diproses) : '',
         ];
 
         foreach (Tahapan::semua() as $tahap) {

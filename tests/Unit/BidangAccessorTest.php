@@ -121,9 +121,19 @@ class BidangAccessorTest extends TestCase
         $this->assertSame($tahapan[1]->kolom, $bidang->tahapAktif?->kolom);
     }
 
+    public function test_status_hitung_belum_diproses_sebelum_dipilih_kantah(): void
+    {
+        $bidang = $this->bidang();
+
+        $this->assertSame(StatusBidang::BelumDiproses, $bidang->statusHitung);
+    }
+
     public function test_status_hitung_proses_saat_sertipikat_belum_terbit(): void
     {
-        $bidang = $this->bidang([Tahapan::pertama()->kolom => '2026-01-05']);
+        $bidang = $this->bidang([
+            'tgl_diproses' => '2026-01-02',
+            Tahapan::pertama()->kolom => '2026-01-05',
+        ]);
 
         $this->assertSame(StatusBidang::Proses, $bidang->statusHitung);
     }

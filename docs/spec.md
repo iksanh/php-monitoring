@@ -80,13 +80,20 @@ bidang
   id
   nomor_urut          string, unique
   nama_aset           string
-  instansi_id         FK instansi (pemilik aset)
+  instansi_id         FK instansi (pemegang hak)
+  pengguna_barang     string, nullable      (perangkat daerah pemakai aset)
   penggunaan          string, nullable      (kantor, sekolah, puskesmas, dll)
   desa                string
-  kecamatan           string
+  kecamatan           string, nullable
   luas_m2             decimal(12,2), nullable
+  jenis_hak           string(50), nullable  (Hak Pakai, Hak Pengelolaan)
+  alas_hak            string, nullable      (SPPHT, surat hibah, SKST)
+  tgl_alas_hak        date, nullable
+  asal_usul           string(50), nullable  (Hibah, Pembelian)
   nomor_berkas_kkp    string, nullable
+  nomor_sertipikat    string, nullable
   tahun_target        year
+  tgl_diproses        date, nullable   (penanda bidang masuk pantauan)
   keterangan          text, nullable
   tgl_permohonan      date, nullable
   tgl_pkkpr           date, nullable
@@ -96,7 +103,8 @@ bidang
   tgl_sk              date, nullable
   tgl_sertipikat      date, nullable
   tgl_serah_terima    date, nullable
-  status              enum(proses, selesai, diserahkan, terkendala) default proses
+  status              enum(belum_diproses, proses, selesai, diserahkan,
+                           terkendala) default proses
   timestamps
   softDeletes
   index: instansi_id, tahun_target, status
@@ -119,18 +127,51 @@ users
   role                enum(admin, operator, viewer)
 ```
 
+**Kolom yang datang dari daftar aset pemda.** `pengguna_barang`, `jenis_hak`,
+`alas_hak`, `tgl_alas_hak`, `asal_usul`, dan `nomor_sertipikat` ditambahkan
+agar daftar aset tanah milik pemda dapat dimuat apa adanya. Alas hak adalah
+dasar penguasaan sebelum sertipikat terbit — inilah berkas yang diperiksa di
+loket, jadi ia dicatat terpisah dari `nomor_sertipikat`. Kolom akuntansi milik
+daftar barang milik daerah (harga perolehan, nilai buku) sengaja tidak diambil:
+aplikasi ini memantau sertipikasi, bukan menilai aset.
+
+`instansi_id` tetap badan hukum pemegang hak, bukan perangkat daerah — subjek
+hak pada sertipikat Hak Pakai adalah pemerintah daerah. Perangkat daerah
+pemakainya dicatat di `pengguna_barang` dan disediakan sebagai penyaring pada
+daftar bidang.
+
+`kecamatan` boleh kosong: daftar aset pemda hanya punya satu kolom letak, dan
+sebagian besar barisnya berhenti di nama desa.
+
 **Kolom `status` tidak diisi operator.** Nilainya dihitung otomatis dari
 tanggal tahap dan kendala aktif, lewat observer saat bidang atau kendala
 disimpan. Field status dihapus dari form input.
 
-| nilai      | syarat                                                    |
-|------------|-----------------------------------------------------------|
-| terkendala | ada minimal satu kendala dengan `tanggal_selesai` kosong  |
-| diserahkan | `tgl_serah_terima` terisi                                 |
-| selesai    | `tgl_sertipikat` terisi, `tgl_serah_terima` belum         |
-| proses     | selain itu                                                |
+| nilai          | syarat                                                    |
+|----------------|-----------------------------------------------------------|
+| terkendala     | ada minimal satu kendala dengan `tanggal_selesai` kosong  |
+| diserahkan     | `tgl_serah_terima` terisi                                 |
+| selesai        | `tgl_sertipikat` terisi, `tgl_serah_terima` belum         |
+| belum_diproses | `tgl_diproses` kosong                                     |
+| proses         | selain itu                                                |
 
 Urutan pemeriksaan sesuai tabel di atas — `terkendala` menang atas yang lain.
+
+**Daftar aset bukan daftar pekerjaan.** Aset tanah pemda berjumlah ribuan
+bidang; Kantor Pertanahan memilih sebagian untuk diproses tiap tahun.
+`tgl_diproses` menandai bidang yang benar-benar dikerjakan, dan hanya bidang
+itu yang dihitung dashboard. Tanpa pemisahan ini seluruh aset yang belum
+bersertipikat terbaca "dalam proses" — angka yang menyesatkan pimpinan.
+
+Penandanya tidak pernah diisi manual lewat form. Aturannya:
+
+- bidang yang dibuat lewat aplikasi (form maupun impor Excel) langsung
+  dipantau, sebab memang sedang dikerjakan;
+- `impor:daftar-aset` menaruh barisnya di antrean dengan `tgl_diproses` kosong;
+- operator memindahkan bidang dari antrean ke pantauan lewat kotak centang dan
+  tombol pada daftar bidang;
+- mengisi tanggal tahap pada bidang antrean menandainya dipantau dengan
+  sendirinya — pekerjaannya jelas sudah jalan.
 
 **Berkas tidak lengkap dicatat sebagai kendala, bukan sebagai tahap.** Kekurangan
 berkas bisa muncul di tahap mana pun, jadi memodelkannya sebagai tahap berarti
@@ -182,8 +223,13 @@ berisi kategori kendala — contoh: *Menunggu Jadwal Panitia A — berkas kurang
 
 ### Dashboard (halaman utama — ini yang dilihat pimpinan)
 
+- baris ringkas daftar aset: total aset, sedang diproses, belum diproses, dan
+  aset yang sudah bersertipikat sebelum pantauan dimulai. Ini latar yang
+  membedakan beban kerja dari isi lemari arsip.
 - kartu angka: total bidang target tahun berjalan, sudah bersertipikat, sudah
-  diserahkan, dalam proses, terkendala
+  diserahkan, dalam proses, terkendala. Seluruh angka dashboard — kartu,
+  grafik, maupun tabel bidang terlama — hanya menghitung bidang yang
+  `tgl_diproses`-nya terisi.
 - progress bar capaian terhadap target tahun berjalan
 - grafik batang: jumlah bidang tertahan di tiap tahap, label sumbu dari
   `label_menunggu`
@@ -201,9 +247,21 @@ berisi kategori kendala — contoh: *Menunggu Jadwal Panitia A — berkas kurang
 
 ### Daftar bidang
 
-Tabel dengan filter: instansi, tahap aktif, penanggung jawab, status, kategori
-kendala, tahun target. Pencarian nama aset dan nomor urut. Pagination
-server-side 25 per halaman. Kolom: nomor urut, nama aset, instansi,
+Tabel dengan filter: instansi, pengguna barang, pantauan, tahap aktif,
+penanggung jawab, status, kategori kendala, tahun target. Pencarian nama aset
+dan nomor urut, ditambah pencarian desa tersendiri. Desa dicari dengan
+mengetik penggalan namanya — bukan daftar pilihan, sebab nama desa pada daftar
+aset ditulis beragam dan jumlahnya ratusan. Sebutan "Desa" atau "Kelurahan" di
+depan kata kunci dilepas lebih dulu, supaya nama yang disalin apa adanya dari
+berkas pemda tetap ketemu. Pagination server-side 25 per halaman.
+
+Halaman ini juga tempat memilih pekerjaan: tiap baris punya kotak centang, dan
+sebuah bilah aksi menandai bidang terpilih sedang diproses pada tahun target
+yang dipilih, atau mengembalikannya ke antrean. Tersedia pula pilihan
+"seluruh hasil penyaringan" supaya satu perangkat daerah bisa ditandai
+sekaligus tanpa mencentang halaman demi halaman. Bidang yang tanggal tahapnya
+sudah terisi tidak bisa dikembalikan ke antrean. Aksi ini hanya untuk peran
+yang boleh menulis; viewer melihat daftar yang sama tanpa kotak centang. Kolom: nomor urut, nama aset, instansi,
 desa/kecamatan, luas, tahap aktif, penanggung jawab, umur hari, status. Filter
 tersimpan di query string.
 
@@ -237,6 +295,37 @@ menambah jenis baru (mis. BUMD, kementerian) dan mengubah namanya. Ketentuan:
 - Tiga jenis bawaan ditanam oleh migrasi, jadi pemasangan baru langsung punya
   pilihan tanpa perlu seeder.
 
+### Impor daftar aset pemda
+
+Data awal datang sebagai berkas keluaran aplikasi barang milik daerah — kop dua
+baris, judul bertingkat dua, dan lembar terpisah untuk tanah yang sudah dan
+belum bersertipikat. Berkas itu dibaca perintah konsol
+`php artisan impor:daftar-aset <berkas.xlsx>`, bukan lewat halaman impor:
+jumlah barisnya seribu lebih dan susunannya bukan template aplikasi ini.
+
+Berkasnya sendiri tidak ikut repositori — `.gitignore` menyisihkan `docs/*.xlsx`
+karena isinya data nyata yang berganti tiap tahun. Taruh kiriman terbaru dari
+pemda di `docs/`, lalu sebut path-nya saat menjalankan perintah.
+
+Ketentuan pembacaan:
+
+- Lembar dikenali dari namanya. Kolom "Sertifikat" pada lembar yang sudah
+  bersertipikat dibaca sebagai `nomor_sertipikat` dan `tgl_sertipikat`; pada
+  lembar yang belum, kolom yang sama dibaca sebagai `alas_hak` dan
+  `tgl_alas_hak`. Menyamakan keduanya berarti melaporkan tanah bersertipikat
+  padahal belum.
+- Seluruh baris masuk sebagai antrean (`tgl_diproses` kosong). Aset yang
+  sertipikatnya sudah terbit sekaligus dicatat sudah diserahkan — begitu
+  tercantum di daftar aset pemda, sertipikatnya memang sudah di tangan mereka.
+- `nomor_urut` dibangun dari kode barang dan nomor register, sehingga perintah
+  aman diulang. Kode barang dan register itu sendiri tidak jadi kolom —
+  keduanya dititip di `keterangan` untuk rekonsiliasi.
+- `tahun_target` bidang bersertipikat diambil dari tahun terbit sertipikatnya,
+  bidang lain memakai tahun berjalan.
+- `--pratinjau` menampilkan ringkasan tanpa menulis; `--perbarui` menimpa
+  bidang yang nomor urutnya sudah ada, tanpa pernah mengosongkan tanggal
+  sertipikat yang sudah dicatat operator.
+
 ### Export Excel
 
 Daftar bidang sesuai filter aktif. Kolom tanggal tahap mengikuti urutan config,
@@ -247,7 +336,8 @@ memakai `label` sebagai header.
 - Seeder: 3 instansi contoh, 4 pengguna (dua admin, satu operator, satu viewer),
   dan minimal 40 bidang. Sebaran meniru kondisi riil kantor: 2 menunggu PKKPR,
   2 menunggu pengukuran, 6 menunggu peta analisis, 7 menunggu Panitia A,
-  5 siap diserahkan, 6 sudah diserahkan, sisanya acak. Beberapa bidang diberi
+  5 siap diserahkan, 6 sudah diserahkan, sisanya berputar rata atas seluruh
+  tahap, ditambah beberapa bidang yang masih antre di daftar aset. Beberapa bidang diberi
   kendala aktif dengan kategori bervariasi. Dashboard harus langsung bermakna
   setelah `db:seed`.
 - Sebaran per tahap dihitung dengan satu query agregasi `SUM(CASE WHEN ...)`

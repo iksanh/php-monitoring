@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Support;
 
+use DateTimeImmutable;
 use DateTimeInterface;
 
 /**
@@ -74,5 +75,60 @@ final class Tanggal
     public static function input(?DateTimeInterface $tanggal): string
     {
         return $tanggal?->format('Y-m-d') ?? '';
+    }
+
+    /**
+     * Kebalikan pendek()/panjang(): membaca tanggal yang diketik manusia.
+     *
+     * Dipakai impor Excel, tempat sel tanggal sering berisi teks — baik
+     * ketikan operator (`12/08/2026`) maupun keluaran pendek() sendiri
+     * (`12 Agu 2026`), sehingga berkas hasil export bisa diunggah kembali.
+     *
+     * Hanya format yang tidak mendua yang diterima. `12/08/2026` selalu
+     * dibaca 12 Agustus, tidak pernah 8 Desember, karena penulisan
+     * hari-bulan-tahun itulah yang berlaku di seluruh aplikasi ini.
+     */
+    public static function dariTeks(string $teks): ?string
+    {
+        $bersih = trim(preg_replace('/\s+/', ' ', $teks) ?? $teks);
+
+        if ($bersih === '') {
+            return null;
+        }
+
+        $bersih = self::gantiNamaBulan($bersih);
+
+        foreach (['Y-m-d', 'd/m/Y', 'd-m-Y', 'd.m.Y', 'd m Y'] as $format) {
+            $tanggal = DateTimeImmutable::createFromFormat('!'.$format, $bersih);
+
+            // createFromFormat menerima 31/02/2026 lalu menggesernya diam-diam
+            // ke 3 Maret; kejanggalan itu hanya muncul sebagai warning. Baris
+            // sejumlah satu digit seperti 1/6/2026 tetap sah.
+            if ($tanggal !== false && DateTimeImmutable::getLastErrors() === false) {
+                return $tanggal->format('Y-m-d');
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Menukar nama bulan Indonesia menjadi angka, supaya sisa penguraian
+     * cukup menangani format berangka saja.
+     */
+    private static function gantiNamaBulan(string $teks): string
+    {
+        foreach ([self::BULAN_PANJANG, self::BULAN_PENDEK] as $daftar) {
+            foreach ($daftar as $nomor => $nama) {
+                $pola = '/(?<=^|[\s\-.\/])'.preg_quote($nama, '/').'(?=$|[\s\-.\/])/iu';
+                $hasil = preg_replace($pola, str_pad((string) $nomor, 2, '0', STR_PAD_LEFT), $teks);
+
+                if ($hasil !== null && $hasil !== $teks) {
+                    return $hasil;
+                }
+            }
+        }
+
+        return $teks;
     }
 }

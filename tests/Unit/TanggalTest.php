@@ -39,4 +39,32 @@ class TanggalTest extends TestCase
     {
         $this->assertSame('2026-08-12', Tanggal::input(CarbonImmutable::parse('2026-08-12 17:00:00')));
     }
+
+    public function test_membaca_tanggal_ketikan_manusia(): void
+    {
+        foreach (['12/08/2026', '12-08-2026', '12.08.2026', '2026-08-12', '12 Agu 2026', '12 Agustus 2026'] as $teks) {
+            $this->assertSame('2026-08-12', Tanggal::dariTeks($teks), "Gagal membaca [{$teks}].");
+        }
+
+        // Sehari dan sebulan satu angka tetap sah.
+        $this->assertSame('2026-09-01', Tanggal::dariTeks('1/9/2026'));
+
+        // Keluaran pendek() harus bisa dibaca balik — itulah yang membuat
+        // berkas hasil export dapat diunggah kembali.
+        $this->assertSame('2025-12-31', Tanggal::dariTeks(Tanggal::pendek(CarbonImmutable::parse('2025-12-31'))));
+    }
+
+    public function test_menolak_teks_yang_bukan_tanggal(): void
+    {
+        foreach (['', '   ', 'kemarin', '2026', '31/02/2026', '13/13/2026', 'HP-001'] as $teks) {
+            $this->assertNull(Tanggal::dariTeks($teks), "Teks [{$teks}] seharusnya ditolak.");
+        }
+    }
+
+    public function test_hari_bulan_tidak_pernah_dibaca_terbalik(): void
+    {
+        // 08/12/2026 adalah 8 Desember, bukan 12 Agustus. Penulisan
+        // hari-bulan-tahun berlaku di seluruh aplikasi.
+        $this->assertSame('2026-12-08', Tanggal::dariTeks('08/12/2026'));
+    }
 }

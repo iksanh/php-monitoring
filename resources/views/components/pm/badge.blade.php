@@ -5,6 +5,9 @@
         \App\Enums\StatusBidang::Selesai => 'bg-emerald-100 text-emerald-800',
         \App\Enums\StatusBidang::Diserahkan => 'bg-sky-100 text-sky-800',
         \App\Enums\StatusBidang::Terkendala => 'bg-red-100 text-red-800',
+        // Antrean daftar aset sengaja kelabu: ia bukan pekerjaan berjalan,
+        // jadi tidak boleh menarik perhatian seperti bidang yang diproses.
+        \App\Enums\StatusBidang::BelumDiproses => 'bg-zinc-100 text-zinc-600',
         default => 'bg-amber-100 text-amber-800',
     };
 @endphp

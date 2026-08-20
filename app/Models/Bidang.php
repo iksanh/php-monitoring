@@ -12,6 +12,7 @@ use App\Support\Tahapan;
 use Carbon\CarbonInterface;
 use Database\Factories\BidangFactory;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -26,12 +27,19 @@ use Illuminate\Support\Carbon;
  * @property string $nomor_urut
  * @property string $nama_aset
  * @property int $instansi_id
+ * @property string|null $pengguna_barang
  * @property string|null $penggunaan
  * @property string $desa
- * @property string $kecamatan
+ * @property string|null $kecamatan
  * @property string|null $luas_m2
+ * @property string|null $jenis_hak
+ * @property string|null $alas_hak
+ * @property Carbon|null $tgl_alas_hak
+ * @property string|null $asal_usul
  * @property string|null $nomor_berkas_kkp
+ * @property string|null $nomor_sertipikat
  * @property int $tahun_target
+ * @property CarbonInterface|null $tgl_diproses
  * @property string|null $keterangan
  * @property StatusBidang $status
  * @property Carbon|null $created_at
@@ -47,6 +55,7 @@ use Illuminate\Support\Carbon;
  * @property-read int $persenProgres
  * @property-read StatusBidang $statusHitung
  * @property-read string $kondisiTahap
+ * @property-read string $letak
  */
 #[ObservedBy(BidangObserver::class)]
 class Bidang extends Model
@@ -89,12 +98,19 @@ class Bidang extends Model
         'nomor_urut',
         'nama_aset',
         'instansi_id',
+        'pengguna_barang',
         'penggunaan',
         'desa',
         'kecamatan',
         'luas_m2',
+        'jenis_hak',
+        'alas_hak',
+        'tgl_alas_hak',
+        'asal_usul',
         'nomor_berkas_kkp',
+        'nomor_sertipikat',
         'tahun_target',
+        'tgl_diproses',
         'keterangan',
     ];
 
@@ -292,8 +308,29 @@ class Bidang extends Model
                 return StatusBidang::Selesai;
             }
 
+            // Bidang yang belum dipilih Kantor Pertanahan masih sebatas
+            // daftar aset. Menyebutnya "dalam proses" membuat ribuan bidang
+            // yang belum disentuh terhitung sebagai pekerjaan berjalan.
+            if ($this->tgl_diproses === null) {
+                return StatusBidang::BelumDiproses;
+            }
+
             return StatusBidang::Proses;
         })->withoutObjectCaching();
+    }
+
+    /**
+     * Bidang yang sudah dipilih untuk dikerjakan, bukan sekadar tercatat di
+     * daftar aset.
+     *
+     * @param  Builder<Bidang>  $query
+     * @return Builder<Bidang>
+     */
+    public function scopeDipantau(Builder $query, bool $dipantau = true): Builder
+    {
+        return $dipantau
+            ? $query->whereNotNull('tgl_diproses')
+            : $query->whereNull('tgl_diproses');
     }
 
     /**
@@ -307,6 +344,22 @@ class Bidang extends Model
     {
         return Attribute::make(
             get: fn (): string => $this->tahapBerikut?->labelMenunggu ?? self::KONDISI_TUNTAS
+        )->withoutObjectCaching();
+    }
+
+    /**
+     * Letak bidang dalam satu baris. Kecamatan kerap kosong pada data lama
+     * yang hanya mencatat nama desa, jadi pemisahnya ikut hilang alih-alih
+     * menyisakan garis miring menggantung.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function letak(): Attribute
+    {
+        return Attribute::make(
+            get: fn (): string => filled($this->kecamatan)
+                ? $this->desa.' / '.$this->kecamatan
+                : (string) $this->desa
         )->withoutObjectCaching();
     }
 
@@ -337,6 +390,14 @@ class Bidang extends Model
         $casts = [
             'tahun_target' => 'integer',
             'luas_m2' => 'decimal:2',
+            // Tanggal alas hak bukan tahap: ia menandai umur dokumen dasar
+            // yang dibawa pemohon, bukan langkah yang dikerjakan kantor.
+            'tgl_alas_hak' => 'date',
+            // `tgl_diproses` satu-satunya kolom tanggal yang ditulis kode
+            // aplikasi, bukan sekadar dibaca — karena itu tipenya di docblock
+            // ditulis CarbonInterface: pabrik tanggal Laravel boleh
+            // dikonfigurasi memakai CarbonImmutable, dan keduanya sah disimpan.
+            'tgl_diproses' => 'date',
             'status' => StatusBidang::class,
         ];
 

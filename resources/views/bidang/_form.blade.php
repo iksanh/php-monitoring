@@ -22,14 +22,42 @@
                          :pilihan="$instansi->pluck('nama', 'id')->all()"
                          wajib />
 
+            <x-pm.input label="Pengguna barang" name="pengguna_barang" :value="$bidang->pengguna_barang"
+                        bantu="Perangkat daerah pemakai aset. Pemegang haknya tetap instansi di atas." />
+
             <x-pm.input label="Penggunaan" name="penggunaan" :value="$bidang->penggunaan"
                         bantu="Misal: kantor, sekolah, puskesmas." />
 
             <x-pm.input label="Desa" name="desa" :value="$bidang->desa" wajib />
-            <x-pm.input label="Kecamatan" name="kecamatan" :value="$bidang->kecamatan" wajib />
+            <x-pm.input label="Kecamatan" name="kecamatan" :value="$bidang->kecamatan" />
 
             <x-pm.input label="Luas (m²)" name="luas_m2" type="number" step="0.01" min="0" :value="$bidang->luas_m2" />
+            <x-pm.input label="Jenis hak" name="jenis_hak" :value="$bidang->jenis_hak"
+                        list="pilihan-jenis-hak" bantu="Misal: Hak Pakai, Hak Pengelolaan." />
+
+            <x-pm.input label="Alas hak" name="alas_hak" :value="$bidang->alas_hak"
+                        bantu="Dasar penguasaan sebelum sertipikat: SPPHT, surat hibah, SKST." />
+            <x-pm.input label="Tanggal alas hak" name="tgl_alas_hak" type="date"
+                        :value="\App\Support\Tanggal::input($bidang->tgl_alas_hak)" />
+
+            <x-pm.input label="Asal usul" name="asal_usul" :value="$bidang->asal_usul"
+                        list="pilihan-asal-usul" bantu="Misal: Hibah, Pembelian." />
+
             <x-pm.input label="Nomor berkas KKP" name="nomor_berkas_kkp" :value="$bidang->nomor_berkas_kkp" />
+            <x-pm.input label="Nomor sertipikat" name="nomor_sertipikat" :value="$bidang->nomor_sertipikat"
+                        bantu="Diisi setelah sertipikat terbit." />
+
+            {{-- Daftar saran, bukan pembatas: isian bebas supaya jenis hak dan
+                 asal usul di luar kebiasaan tetap bisa dicatat. --}}
+            <datalist id="pilihan-jenis-hak">
+                <option value="Hak Pakai"></option>
+                <option value="Hak Pengelolaan"></option>
+            </datalist>
+
+            <datalist id="pilihan-asal-usul">
+                <option value="Hibah"></option>
+                <option value="Pembelian"></option>
+            </datalist>
 
             <x-pm.input label="Tahun target" name="tahun_target" type="number" min="2000" max="2100"
                         :value="$bidang->tahun_target ?? now()->year" wajib />

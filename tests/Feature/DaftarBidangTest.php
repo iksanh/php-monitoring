@@ -165,6 +165,50 @@ class DaftarBidangTest extends TestCase
             ->assertSee(mb_strtolower(KategoriKendala::BerkasKurang->label()));
     }
 
+    public function test_pencarian_desa_menerima_penggalan_nama(): void
+    {
+        Bidang::factory()->create(['nomor_urut' => 'HP-300', 'desa' => 'Toto Selatan']);
+        Bidang::factory()->create(['nomor_urut' => 'HP-400', 'desa' => 'Ulantha']);
+
+        $this->masuk()->get(route('bidang.index', ['desa' => 'toto']))
+            ->assertOk()
+            ->assertSee('HP-300')
+            ->assertDontSee('HP-400');
+    }
+
+    /**
+     * Kolom desa menyimpan namanya saja, sedangkan daftar aset pemda menulis
+     * "Desa Ulantha". Menyalin apa adanya dari berkas itu harus tetap ketemu.
+     */
+    public function test_pencarian_desa_mengabaikan_sebutan_desa_di_depan(): void
+    {
+        Bidang::factory()->create(['nomor_urut' => 'HP-500', 'desa' => 'Ulantha']);
+
+        $this->masuk()->get(route('bidang.index', ['desa' => 'Desa Ulantha']))
+            ->assertOk()
+            ->assertSee('HP-500');
+
+        $this->masuk()->get(route('bidang.index', ['desa' => 'Kel. Ulantha']))
+            ->assertOk()
+            ->assertSee('HP-500');
+    }
+
+    public function test_pencarian_desa_bisa_digabung_dengan_penyaring_pantauan(): void
+    {
+        Bidang::factory()->create(['nomor_urut' => 'PROSES-1', 'desa' => 'Ulantha']);
+        Bidang::factory()->antrean()->create(['nomor_urut' => 'ANTRE-1', 'desa' => 'Ulantha']);
+        Bidang::factory()->create(['nomor_urut' => 'PROSES-2', 'desa' => 'Boludawa']);
+
+        $this->masuk()->get(route('bidang.index', [
+            'desa' => 'ulantha',
+            'pantauan' => FilterBidang::DIPANTAU,
+        ]))
+            ->assertOk()
+            ->assertSee('PROSES-1')
+            ->assertDontSee('ANTRE-1')
+            ->assertDontSee('PROSES-2');
+    }
+
     public function test_filter_tersimpan_di_query_string_pagination(): void
     {
         Bidang::factory()->count(30)->create();

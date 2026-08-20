@@ -34,11 +34,20 @@
 
             <dl class="mt-4 space-y-3 text-sm">
                 @foreach ([
+                    'Pengguna barang' => $bidang->pengguna_barang ?: '—',
                     'Penggunaan' => $bidang->penggunaan ?: '—',
                     'Desa' => $bidang->desa,
-                    'Kecamatan' => $bidang->kecamatan,
+                    'Kecamatan' => $bidang->kecamatan ?: '—',
                     'Luas' => $bidang->luas_m2 !== null ? number_format((float) $bidang->luas_m2, 2, ',', '.').' m²' : '—',
+                    'Jenis hak' => $bidang->jenis_hak ?: '—',
+                    'Alas hak' => $bidang->alas_hak ?: '—',
+                    'Tanggal alas hak' => $bidang->tgl_alas_hak !== null ? \App\Support\Tanggal::pendek($bidang->tgl_alas_hak) : '—',
+                    'Asal usul' => $bidang->asal_usul ?: '—',
                     'Nomor berkas KKP' => $bidang->nomor_berkas_kkp ?: '—',
+                    'Nomor sertipikat' => $bidang->nomor_sertipikat ?: '—',
+                    'Mulai diproses' => $bidang->tgl_diproses !== null
+                        ? \App\Support\Tanggal::pendek($bidang->tgl_diproses)
+                        : 'Belum — masih antre di daftar aset',
                     'Tahun target' => $bidang->tahun_target,
                     'Tahap aktif' => $bidang->tahapAktif?->label ?? 'Belum mulai',
                     'Sedang menunggu' => $bidang->kondisiTahap,

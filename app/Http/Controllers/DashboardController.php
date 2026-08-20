@@ -17,6 +17,7 @@ class DashboardController extends Controller
         return view('dashboard', [
             'tahun' => $tahun,
             'kartu' => $dashboard->kartuAngka($tahun),
+            'ringkasAset' => $dashboard->ringkasAset(),
             'sebaran' => $dashboard->sebaranTertahan(),
             'perPenanggungJawab' => $dashboard->tertahanPerPenanggungJawab(),
             'perKategoriKendala' => $dashboard->terkendalaPerKategori($tahun),

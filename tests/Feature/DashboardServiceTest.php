@@ -66,7 +66,9 @@ class DashboardServiceTest extends TestCase
             $harapan[$tahap->kolom] = 0;
         }
 
-        foreach (Bidang::query()->get() as $bidang) {
+        // Cakupannya disamakan dengan query dashboard: bidang yang masih antre
+        // di daftar aset belum menunggu tahap apa pun.
+        foreach (Bidang::query()->dipantau()->get() as $bidang) {
             $berikut = $bidang->tahapBerikut;
 
             if ($berikut !== null) {

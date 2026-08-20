@@ -13,7 +13,13 @@
 @endphp
 
 <span class="inline-flex flex-wrap items-baseline gap-1.5">
-    <span>{{ $bidang->kondisiTahap }}</span>
+    {{-- Bidang antrean belum menunggu apa pun: belum ada yang mengerjakannya,
+         jadi menyebut tahap berikutnya di sini akan menyesatkan. --}}
+    @if ($bidang->status === \App\Enums\StatusBidang::BelumDiproses)
+        <span class="text-zinc-400">Belum diproses</span>
+    @else
+        <span>{{ $bidang->kondisiTahap }}</span>
+    @endif
 
     @if ($kendala)
         <span class="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-900"

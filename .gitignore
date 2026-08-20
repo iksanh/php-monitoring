@@ -17,6 +17,11 @@ Homestead.yaml
 npm-debug.log
 yarn-error.log
 /auth.json
+
+# Daftar aset kiriman pemda: data nyata, berkas besar, dan berganti tiap tahun.
+# Simpan di docs/ untuk dibaca `impor:daftar-aset`, jangan ikut ke repositori.
+/docs/*.xlsx
+/docs/*.xls
 /.fleet
 /.idea
 /.nova
