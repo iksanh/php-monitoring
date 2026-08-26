@@ -18,6 +18,15 @@
 //    and rsync --delete would wipe a live app. The global DEPLOY_PATH may still
 //    exist for older jobs; this job ignores it.
 //
+// DATA AWAL DI SERVER (stage rilis):
+//  • ProduksiSeeder jalan tiap deploy. Idempoten — jenis instansi, instansi
+//    nyata, dan akun admin ditulis lewat kunci alami, akun yang sudah ada
+//    dilewati. Password admin tercetak sekali di log build saat akun dibuat.
+//  • Daftar aset tanah pemda diimpor dari berkas .xlsx yang diunggah SEKALI ke
+//    storage/app/ di server (lihat parameter DAFTAR_ASET). Berkasnya tidak ada
+//    di repositori dengan sengaja, dan harus berada di storage/ karena itu
+//    satu-satunya folder data yang dikecualikan dari rsync --delete.
+//
 // Job setup: "Pipeline" job → "Pipeline script from SCM" → this repo,
 // Script Path = Jenkinsfile.
 //
@@ -46,6 +55,18 @@ pipeline {
         string(name: 'SSH_CRED_ID', defaultValue: 'hostinger-ssh', description: 'Jenkins credentials ID — "SSH Username with private key"')
         booleanParam(name: 'RUN_MIGRATIONS',   defaultValue: true,  description: 'Run "artisan migrate --force" after deploy')
         booleanParam(name: 'MAINTENANCE_MODE', defaultValue: true,  description: 'Put the site in maintenance mode during the release step')
+        // ProduksiSeeder hanya menulis lewat kunci alami dan tidak pernah menimpa
+        // password akun yang sudah ada, jadi aman diulang tiap deploy. Password
+        // administrator tercetak SEKALI di log build ini, saat akunnya dibuat.
+        booleanParam(name: 'RUN_SEEDER',       defaultValue: true,  description: 'Jalankan ProduksiSeeder (jenis instansi, instansi nyata, akun admin). Idempoten.')
+        // Daftar aset pemda sengaja tidak masuk repositori (lihat .gitignore),
+        // jadi berkasnya diunggah SEKALI ke server dengan scp:
+        //   scp -P 65002 "docs/Daftar Aset berupa Tanah Pemda THN 2025.xlsx" \
+        //       u983422899@HOST:/home/u983422899/public_html/monitoring/storage/app/daftar-aset.xlsx
+        // Letaknya di storage/ bukan docs/ karena rsync --delete di bawah
+        // mengecualikan /storage — berkas di docs/ akan terhapus tiap deploy.
+        // Path relatif terhadap DEPLOY_PATH. Kosongkan untuk melewati impor.
+        string(name: 'DAFTAR_ASET', defaultValue: 'storage/app/daftar-aset.xlsx', description: 'Berkas daftar aset pemda di server, relatif ke DEPLOY_PATH. Kosongkan untuk melewati impor.')
     }
 
     options {
@@ -162,6 +183,23 @@ pipeline {
                     def composer= params.COMPOSER_BIN
                     def down    = params.MAINTENANCE_MODE ? "${php} artisan down --retry=15 || true" : "true"
                     def migrate = params.RUN_MIGRATIONS   ? "${php} artisan migrate --force"          : "echo 'migrations skipped'"
+                    def seed    = params.RUN_SEEDER       ? "${php} artisan db:seed --class=ProduksiSeeder --force" : "echo 'seeder dilewati'"
+
+                    // Impor daftar aset: aman diulang — bidang dikenali dari
+                    // nomor_urut (kode barang + register) dan yang sudah ada
+                    // dilewati, jadi deploy berikutnya tidak menggandakan data.
+                    // Tanpa --perbarui, supaya tanggal dan penanda diproses yang
+                    // dicatat operator tidak tertimpa berkas pemda yang lebih tua.
+                    // memory_limit dinaikkan: berkasnya seribu baris lebih dan
+                    // CLI shared hosting kerap dibatasi 128M.
+                    def berkas  = params.DAFTAR_ASET?.trim()
+                    def impor   = berkas ? """
+                        if [ -f '${berkas}' ]; then
+                            ${php} -d memory_limit=512M artisan impor:daftar-aset '${berkas}'
+                        else
+                            echo 'Daftar aset tidak ada di ${berkas} — impor dilewati. Unggah dengan scp bila memang diperlukan.'
+                        fi
+                    """.stripIndent().trim() : "echo 'impor daftar aset dilewati'"
 
                     // Everything runs with PHP 8.4 on the server, so vendor/ is generated
                     // by the exact PHP that serves the web — no version mismatch possible.
@@ -172,6 +210,8 @@ pipeline {
                         ${down}
                         ${php} ${composer} install --no-dev --optimize-autoloader --no-interaction --prefer-dist --no-progress
                         ${migrate}
+                        ${seed}
+                        ${impor}
                         ${php} artisan storage:link || true
                         ${php} artisan config:clear
                         ${php} artisan view:clear
