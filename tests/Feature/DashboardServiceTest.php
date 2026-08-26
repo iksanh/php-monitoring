@@ -163,6 +163,55 @@ class DashboardServiceTest extends TestCase
         $this->assertSame(33, $kartu->persenCapaian());
     }
 
+    /**
+     * Operator boleh melewati tahap, dan yang paling sering terlewat adalah
+     * tanggal terbitnya sertipikat: yang dipegang petugas cuma berita acara
+     * serah terima. Aset tidak mungkin diserahkan tanpa sertipikat, jadi
+     * baris seperti itu tetap terhitung sebagai capaian.
+     */
+    public function test_serah_terima_tanpa_tanggal_sertipikat_tetap_terhitung_bersertipikat(): void
+    {
+        $tahun = (int) date('Y');
+
+        Bidang::factory()->tahunTarget($tahun)->create([
+            Bidang::KOLOM_SERAH_TERIMA => '2026-08-20',
+        ]);
+
+        $kartu = $this->dashboard->kartuAngka($tahun);
+
+        $this->assertSame(1, $kartu->total);
+        $this->assertSame(1, $kartu->bersertipikat);
+        $this->assertSame(1, $kartu->diserahkan);
+        $this->assertSame(100, $kartu->persenCapaian());
+    }
+
+    public function test_capaian_per_instansi_ikut_menghitung_serah_terima_tanpa_sertipikat(): void
+    {
+        $tahun = (int) date('Y');
+        $instansi = Instansi::factory()->create();
+
+        Bidang::factory()->tahunTarget($tahun)->create([
+            'instansi_id' => $instansi->id,
+            Bidang::KOLOM_SERAH_TERIMA => '2026-08-20',
+        ]);
+
+        $capaian = $this->dashboard->capaianPerInstansi($tahun);
+
+        $this->assertSame(1, $capaian[0]->bersertipikat);
+    }
+
+    public function test_bidang_terlama_melewatkan_yang_sudah_diserahkan(): void
+    {
+        $mulai = Tahapan::pertama()->kolom;
+
+        Bidang::factory()->create([
+            $mulai => '2024-01-10',
+            Bidang::KOLOM_SERAH_TERIMA => '2026-08-20',
+        ]);
+
+        $this->assertCount(0, $this->dashboard->bidangTerlama());
+    }
+
     public function test_kartu_angka_tanpa_data_tidak_membagi_nol(): void
     {
         $kartu = $this->dashboard->kartuAngka((int) date('Y'));

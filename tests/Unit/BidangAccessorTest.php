@@ -100,6 +100,23 @@ class BidangAccessorTest extends TestCase
         $this->assertSame(60, $bidang->umurHari);
     }
 
+    /**
+     * Tanggal terbit sertipikat kerap dilewati operator, yang tercatat hanya
+     * berita acara serah terimanya. Berkasnya sudah tuntas, jadi umurnya tidak
+     * boleh terus bertambah tiap hari.
+     */
+    public function test_umur_hari_berhenti_di_serah_terima_bila_tanggal_sertipikat_dilewati(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-08-20 09:30:00'));
+
+        $bidang = $this->bidang([
+            Tahapan::pertama()->kolom => '2026-01-05',
+            Bidang::KOLOM_SERAH_TERIMA => '2026-03-06',
+        ]);
+
+        $this->assertSame(60, $bidang->umurHari);
+    }
+
     public function test_umur_hari_dihitung_sampai_hari_ini_bila_sertipikat_belum_terbit(): void
     {
         $this->travelTo(CarbonImmutable::parse('2026-08-12 09:30:00'));

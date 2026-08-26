@@ -46,14 +46,14 @@ class DashboardService
      */
     public function ringkasAset(): RingkasAset
     {
-        $terbit = $this->syarat->kolomAman(Bidang::KOLOM_TERBIT);
+        $terbit = $this->syarat->salahSatuTerisi(Bidang::KOLOM_BUKTI_TERBIT);
 
         $baris = Bidang::query()
             ->select($this->syarat->ekspresi(
                 'count(*) as jml_total,'
                 .' sum(case when tgl_diproses is not null then 1 else 0 end) as jml_dipantau,'
-                .' sum(case when tgl_diproses is null and '.$terbit.' is null then 1 else 0 end) as jml_antrean,'
-                .' sum(case when tgl_diproses is null and '.$terbit.' is not null then 1 else 0 end) as jml_riwayat'
+                .' sum(case when tgl_diproses is null and not '.$terbit.' then 1 else 0 end) as jml_antrean,'
+                .' sum(case when tgl_diproses is null and '.$terbit.' then 1 else 0 end) as jml_riwayat'
             ))
             ->first();
 
@@ -77,7 +77,7 @@ class DashboardService
             ->where('tahun_target', $tahun)
             ->select($this->syarat->ekspresi(
                 'count(*) as jml_total,'
-                .' sum(case when '.$this->syarat->kolomAman(Bidang::KOLOM_TERBIT).' is not null then 1 else 0 end) as jml_terbit,'
+                .' sum(case when '.$this->syarat->salahSatuTerisi(Bidang::KOLOM_BUKTI_TERBIT).' then 1 else 0 end) as jml_terbit,'
                 .' sum(case when status = '.$this->syarat->nilaiAman(StatusBidang::Proses->value).' then 1 else 0 end) as jml_proses,'
                 .' sum(case when status = '.$this->syarat->nilaiAman(StatusBidang::Diserahkan->value).' then 1 else 0 end) as jml_diserahkan,'
                 .' sum(case when status = '.$this->syarat->nilaiAman(StatusBidang::Terkendala->value).' then 1 else 0 end) as jml_terkendala'
@@ -202,7 +202,7 @@ class DashboardService
             ->select($this->syarat->ekspresi(
                 'instansi.nama as nama_instansi,'
                 .' count(*) as jml_total,'
-                .' sum(case when bidang.'.$this->syarat->kolomAman(Bidang::KOLOM_TERBIT).' is not null then 1 else 0 end) as jml_terbit'
+                .' sum(case when '.$this->syarat->salahSatuTerisi(Bidang::KOLOM_BUKTI_TERBIT, 'bidang').' then 1 else 0 end) as jml_terbit'
             ))
             ->get();
 
@@ -227,7 +227,7 @@ class DashboardService
         return Bidang::query()
             ->with(['instansi', 'kendalaAktif'])
             ->dipantau()
-            ->whereNull(Bidang::KOLOM_TERBIT)
+            ->bersertipikat(false)
             ->whereNotNull($kolomMulai)
             ->orderBy($kolomMulai)
             ->limit($batas)

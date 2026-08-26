@@ -175,6 +175,27 @@ class PantauanBidangTest extends TestCase
         $this->assertSame(5, $ringkas->antrean);
     }
 
+    /**
+     * Sebagian catatan lama hanya menyimpan tanggal serah terima. Aset itu
+     * jelas sudah bersertipikat, jadi tidak boleh masuk hitungan antrean.
+     */
+    public function test_serah_terima_tanpa_tanggal_sertipikat_bukan_antrean(): void
+    {
+        Bidang::factory()->antrean()->create([
+            'nomor_urut' => 'LAMA-1',
+            Bidang::KOLOM_SERAH_TERIMA => '2019-05-05',
+        ]);
+
+        $ringkas = app(DashboardService::class)->ringkasAset();
+
+        $this->assertSame(1, $ringkas->riwayatBersertipikat);
+        $this->assertSame(0, $ringkas->antrean);
+
+        $this->masuk()->get(route('bidang.index', ['pantauan' => FilterBidang::ANTREAN]))
+            ->assertOk()
+            ->assertDontSee('LAMA-1');
+    }
+
     public function test_aset_bersertipikat_yang_belum_dipantau_terhitung_riwayat(): void
     {
         Bidang::factory()->antrean()->create([

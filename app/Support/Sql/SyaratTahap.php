@@ -82,6 +82,32 @@ final class SyaratTahap
         return '('.implode(' or ', array_map(fn (Tahap $tahap): string => $this->menunggu($tahap), $tahapan)).')';
     }
 
+    /**
+     * Salah satu kolom tanggal ini terisi.
+     *
+     * Dipakai agregasi yang menganggap satu tahap terbukti lewat lebih dari
+     * satu kolom — mis. sertipikat yang terbukti dari tanggal serah terima
+     * ketika tanggal terbitnya dilewati operator. Kolomnya dititip pemanggil,
+     * bukan dikenali sendiri di sini, supaya arti kolom tetap tinggal di
+     * modelnya.
+     *
+     * @param  list<string>  $kolom
+     * @param  string  $tabel  Awalan nama tabel, perlu pada query ber-join.
+     */
+    public function salahSatuTerisi(array $kolom, string $tabel = ''): string
+    {
+        if ($kolom === []) {
+            return '1 = 0';
+        }
+
+        $awalan = $tabel === '' ? '' : $this->kolomAman($tabel).'.';
+
+        return '('.implode(' or ', array_map(
+            fn (string $satu): string => $awalan.$this->kolomAman($satu).' is not null',
+            $kolom,
+        )).')';
+    }
+
     public function ekspresi(string $sql): EkspresiAgregasi
     {
         return new EkspresiAgregasi($sql);

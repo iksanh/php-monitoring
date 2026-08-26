@@ -109,7 +109,7 @@ final readonly class FilterBidang
             // Aset yang sertipikatnya sudah terbit bukan antrean, meski tidak
             // pernah masuk pantauan: sertipikatnya terbit jauh sebelum papan
             // pantau ini ada. Yang antre adalah yang memang belum digarap.
-            $query->dipantau(false)->whereNull(Bidang::KOLOM_TERBIT);
+            $query->dipantau(false)->bersertipikat(false);
         }
 
         if ($this->status !== null) {

@@ -81,6 +81,22 @@ class Bidang extends Model
     public const KOLOM_SERAH_TERIMA = 'tgl_serah_terima';
 
     /**
+     * Kolom yang membuktikan sertipikat sudah terbit.
+     *
+     * Serah terima ikut jadi bukti: aset tidak mungkin diserahkan tanpa
+     * sertipikat di tangan. Bidang yang tanggal serah terimanya terisi
+     * sementara tanggal sertipikatnya kosong berarti tanggal terbitnya saja
+     * yang belum sempat dicatat — bukan sertipikatnya yang belum ada.
+     *
+     * Operator memang bebas melewati tahap (docs/spec.md bagian 1), jadi
+     * hitungan capaian harus tahan tahap yang terlewat. Urutannya berarti:
+     * yang lebih dulu dipakai sebagai tanggal terbit bila keduanya terisi.
+     *
+     * @var list<string>
+     */
+    public const KOLOM_BUKTI_TERBIT = [self::KOLOM_TERBIT, self::KOLOM_SERAH_TERIMA];
+
+    /**
      * Sebutan bidang yang seluruh tahapnya sudah terisi.
      */
     public const KONDISI_TUNTAS = 'Sudah Diserahkan';
@@ -239,6 +255,10 @@ class Bidang extends Model
      * Umur berkas dalam hari: dari tahap pertama sampai sertipikat terbit,
      * atau sampai hari ini bila belum terbit. Null bila tahap pertama kosong.
      *
+     * Bila tanggal terbitnya dilewati sementara serah terimanya tercatat,
+     * yang dipakai tanggal serah terima — berkasnya jelas sudah tuntas, jadi
+     * umurnya tidak boleh terus bertambah tiap hari.
+     *
      * @return Attribute<int|null, never>
      */
     protected function umurHari(): Attribute
@@ -250,13 +270,28 @@ class Bidang extends Model
                 return null;
             }
 
-            $tahapTerbit = Tahapan::cari(self::KOLOM_TERBIT);
-            $selesai = $tahapTerbit !== null ? $this->tanggalTahap($tahapTerbit) : null;
-
             return (int) $mulai->startOfDay()->diffInDays(
-                ($selesai ?? now())->startOfDay()
+                ($this->tanggalSelesai() ?? now())->startOfDay()
             );
         });
+    }
+
+    /**
+     * Tanggal berkas dianggap tuntas: tanggal sertipikat, atau tanggal serah
+     * terima bila tanggal sertipikatnya dilewati. Null bila keduanya kosong.
+     */
+    private function tanggalSelesai(): ?CarbonInterface
+    {
+        foreach (self::KOLOM_BUKTI_TERBIT as $kolom) {
+            $tahap = Tahapan::cari($kolom);
+            $tanggal = $tahap !== null ? $this->tanggalTahap($tahap) : null;
+
+            if ($tanggal !== null) {
+                return $tanggal;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -331,6 +366,35 @@ class Bidang extends Model
         return $dipantau
             ? $query->whereNotNull('tgl_diproses')
             : $query->whereNull('tgl_diproses');
+    }
+
+    /**
+     * Bidang yang sertipikatnya sudah terbit — lihat KOLOM_BUKTI_TERBIT.
+     *
+     * @param  Builder<Bidang>  $query
+     * @return Builder<Bidang>
+     */
+    public function scopeBersertipikat(Builder $query, bool $sudah = true): Builder
+    {
+        return $query->where(function (Builder $bagian) use ($sudah): void {
+            foreach (self::KOLOM_BUKTI_TERBIT as $kolom) {
+                $sudah ? $bagian->orWhereNotNull($kolom) : $bagian->whereNull($kolom);
+            }
+        });
+    }
+
+    /**
+     * Sertipikatnya sudah terbit, walau tanggal terbitnya belum dicatat.
+     */
+    public function sudahBersertipikat(): bool
+    {
+        foreach (self::KOLOM_BUKTI_TERBIT as $kolom) {
+            if ($this->getAttribute($kolom) !== null) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
